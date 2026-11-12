@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { place } from './validation.mjs';
 
-export const ROUTE_SPEED_MPS = 45 * 1609.344 / 3600;
+export const DEFAULT_ROUTE_SPEED_MPH = 45;
+export const MIN_ROUTE_SPEED_MPH = 3;
+export const MAX_ROUTE_SPEED_MPH = 80;
+export const mphToMps = mph => mph * 1609.344 / 3600;
+export const ROUTE_SPEED_MPS = mphToMps(DEFAULT_ROUTE_SPEED_MPH);
 const radians = degrees => degrees * Math.PI / 180;
 const longitudeDelta = (from, to) => ((to - from + 540) % 360) - 180;
 
@@ -69,6 +73,6 @@ export class Router {
     } catch (error) { throw new Error(`Could not plan the road route. Check your internet connection and try again. ${error.message}`); }
     if (data.code !== 'Ok' || data.routes?.[0]?.geometry?.type !== 'LineString') throw new Error('No drivable route found. Move the pins closer to connected roads and try again.');
     const path = measurePath(data.routes[0].geometry.coordinates);
-    return { id: randomUUID(), waypoints, coordinates: path.coordinates, distanceMeters: path.distanceMeters, durationSeconds: path.distanceMeters / ROUTE_SPEED_MPS, speedMph: 45 };
+    return { id: randomUUID(), waypoints, coordinates: path.coordinates, distanceMeters: path.distanceMeters, durationSeconds: path.distanceMeters / ROUTE_SPEED_MPS, speedMph: DEFAULT_ROUTE_SPEED_MPH };
   }
 }

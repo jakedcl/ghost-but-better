@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Router, measurePath, pointAlong, distanceBetween, ROUTE_SPEED_MPS } from '../backend/routing.mjs';
+import { Router, measurePath, pointAlong, distanceBetween, ROUTE_SPEED_MPS, mphToMps, MIN_ROUTE_SPEED_MPH, MAX_ROUTE_SPEED_MPH } from '../backend/routing.mjs';
 import { Controller } from '../backend/controller.mjs';
 import { defaults } from '../backend/store.mjs';
 
@@ -142,4 +142,26 @@ test('unplanned routes and changed endpoints cannot bypass route planning', asyn
   await assert.rejects(f.c.startRoute({deviceId: f.phone.id, routeId: 'other'}), /Plan the route/);
   await f.start(); await assert.rejects(f.c.planRoute(plan.waypoints), /restore real location/);
   await assert.rejects(f.start(), /Restore real location/);
+});
+test('route speed can change mid-playback and updates remaining time and motion', async t => {
+  const f = await fixture(t); await f.start();
+  f.advance(1000); await f.c.tickRoute();
+  close(f.c.state.route.traveledMeters, ROUTE_SPEED_MPS);
+  const slowMph = 15, slowMps = mphToMps(slowMph);
+  await f.c.setRouteSpeed({speedMph: slowMph});
+  close(f.c.state.route.speedMph, slowMph);
+  close(f.c.state.route.remainingSeconds, (plan.distanceMeters - ROUTE_SPEED_MPS) / slowMps, 0.01);
+  f.advance(1000); await f.c.tickRoute();
+  close(f.c.state.route.traveledMeters, ROUTE_SPEED_MPS + slowMps);
+  await assert.rejects(f.c.setRouteSpeed({speedMph: 2}), new RegExp(`${MIN_ROUTE_SPEED_MPH}`));
+  await assert.rejects(f.c.setRouteSpeed({speedMph: 120}), new RegExp(`${MAX_ROUTE_SPEED_MPH}`));
+});
+test('route start accepts a custom playback speed', async t => {
+  const customMph = 25, customMps = mphToMps(customMph);
+  const f = await fixture(t);
+  await f.c.startRoute({deviceId: f.phone.id, routeId: plan.id, speedMph: customMph});
+  assert.equal(f.c.state.route.speedMph, customMph);
+  assert.equal(f.c.state.route.status, 'running');
+  f.advance(1000); await f.c.tickRoute();
+  close(f.c.state.route.traveledMeters, customMps);
 });
