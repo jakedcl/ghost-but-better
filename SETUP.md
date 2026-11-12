@@ -4,7 +4,7 @@ Ghost runs on your computer and sends simulated locations to a phone over a USB 
 
 ## Download and open
 
-Download **Ghost 0.1.7** from [GitHub Releases](https://github.com/Blueturboguy07/ghost-location/releases/tag/v0.1.7) or use the [Publik installation guide](https://publikhq.com/ghost/install).
+Download **Ghost** from [Ghost But Better releases](https://github.com/jakedcl/ghost-but-better/releases) when available, or build from this repository (see README).
 
 | Your computer | Download |
 | --- | --- |
@@ -101,11 +101,11 @@ The speed is constant, regardless of road limits or traffic. The blue dot repres
 
 ## Privacy and tested scope
 
-Ghost has no account. Since 0.1.8 it sends an anonymous usage count (app opened, still running) to Publik; it holds no location or device identifier, and `DO_NOT_TRACK=1` turns it off (see the README, "Usage counts"). Device identifiers, saved places, and a recovery record stay on the computer. Map viewing requests OpenStreetMap tiles, submitted searches go to Photon, and planning sends stop coordinates to OSRM. These public services have usage limits and no uptime guarantee. Route playback itself does not contact OSRM.
+Ghost has no account and sends no usage telemetry. Device identifiers, saved places, and a recovery record stay on the computer. Map viewing requests OpenStreetMap tiles, submitted searches go to Photon, and planning sends stop coordinates to OSRM. These public services have usage limits and no uptime guarantee. Route playback itself does not contact OSRM.
 
 Mac → iPhone has been used successfully on a physical phone. Windows → iPhone, Windows → Android, and Mac → Android have software/adapter coverage; they have **not all been verified with physical USB phones**. Native installer builds are separate from end-to-end phone compatibility. See [validation](docs/validation.md) and the [hardware test matrix](docs/hardware-test-matrix.md).
 
-For help, [open an issue](https://github.com/Blueturboguy07/ghost-location/issues) with the Ghost version, computer OS/processor, phone OS, and exact error. Remove phone identifiers and private locations from logs and screenshots.
+For help, [open an issue](https://github.com/jakedcl/ghost-but-better/issues) with the Ghost version, computer OS/processor, phone OS, and exact error. Remove phone identifiers and private locations from logs and screenshots.
 
 ## Connect over the same Wi-Fi network (0.1.7)
 

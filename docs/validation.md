@@ -12,9 +12,6 @@ The Intel build links cryptography's OpenSSL statically to avoid a shared-librar
 
 These checks establish native packaging and software behavior, not all four physical USB pairings. Mac → iPhone use has been reported and observed locally; the remaining phone combinations still need physical validation. The public setup guide keeps that distinction explicit.
 
-The Publik screenshot uses the actual renderer with an isolated example phone and a public Chicago OSRM route. It does not contain a user's phone identity or make device commands.
-
-
 ## v0.1.5 route playback — 2026-09-13
 
 | Check | Result |
@@ -128,12 +125,6 @@ acknowledgement/error handling, cleanup, permission behavior, process terminatio
 and persistent recovery. They do not establish that a particular phone app accepts
 simulated coordinates. Complete `hardware-test-matrix.md` before a public claim of
 verified support across all four host/phone combinations.
-
-## Publik publication check
-
-Ghost is published at [publikhq.com/ghost](https://publikhq.com/ghost), with approved Mac and Windows guides and a pinned 0.1.5 release. The listing, installation pages, and public Iris guide endpoint returned successfully. The direct-install button opens Publik’s existing sign-in gate for anonymous visitors. Public GitHub download endpoints respond successfully; all uploaded SHA-256 digests match the downloaded CI artifacts, and both DMG and ZIP integrity checks pass.
-
-Publik’s existing guide/assembler/submission test selection passed 152 tests. The Ghost renderer rehearsal passed fixed-location heartbeats and route planning/start/pause/resume with no phone adapters loaded. Published guide and listing inputs are preserved in `publik-guide.json` and `publik-listing.json`; retain the app-specific setup and route steps when preparing a later guide version.
 
 ## 0.1.6 Wi-Fi implementation (2026-09-14)
 

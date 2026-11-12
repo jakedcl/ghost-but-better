@@ -1,8 +1,14 @@
 # Changelog
 
-## 0.1.8
+## 0.1.9 — Ghost But Better (fork)
 
-- Same app as 0.1.7, plus anonymous usage counts: installed builds tell Publik that the app opened and, every 30 minutes, that it still runs. No locations, device identifiers or other content are sent. `DO_NOT_TRACK=1` turns it off. See README, "Usage counts".
+- Remove Publik usage telemetry, related CI, and listing-only docs. Installed builds send no analytics and require no account.
+- Document fork identity in README and `package.json`; add `AGENTS.md` and a static `site/` landing page for Vercel.
+- Upstream Ghost remains credited under GPL-3.0-or-later; see [Blueturboguy07/ghost-location](https://github.com/Blueturboguy07/ghost-location).
+
+## 0.1.8 (upstream)
+
+- Same app as 0.1.7, plus anonymous usage counts via Publik in the upstream project. **This fork removes that telemetry in 0.1.9.**
 
 ## 0.1.7
 
