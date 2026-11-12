@@ -88,11 +88,7 @@ let routeLine = null, routeDot = null;
 const routeMarkers = [];
 let setupHost = detectedHost;
 let setupPlatform = 'ios';
-let surveyHost = detectedHost;
-let surveyPhone = null;
-let onboardingStep = 'survey';
 let onboardingShown = false;
-const onboardingChecks = new Set();
 let pending = false;
 let pendingAction = null;
 let searchNumber = 0;
@@ -155,7 +151,7 @@ $('#app').innerHTML = `
     </aside>
   </div>
 
-  <dialog id="onboarding-dialog" class="onboarding-dialog" aria-labelledby="onboarding-title"><div class="onboarding-chrome"><span class="onboarding-brand">${icon('map-pin')} Ghost</span><span id="onboarding-progress">1 of 2</span></div><div id="onboarding-content"></div></dialog>
+  <dialog id="onboarding-dialog" class="onboarding-dialog" aria-labelledby="onboarding-title"><div class="onboarding-chrome"><span class="onboarding-brand">${icon('map-pin')} Ghost</span><span id="onboarding-progress" hidden>Setup</span></div><div id="onboarding-content"></div></dialog>
 
   <dialog id="setup-dialog" class="sheet-dialog" aria-labelledby="setup-title">
     <div class="sheet-heading"><div><span class="eyebrow">Device setup</span><h2 id="setup-title">Setup guide</h2></div><button class="icon-button" data-close="setup-dialog" aria-label="Close setup guide">${icon('x')}</button></div><p id="setup-intro" class="sheet-intro"></p><div id="setup-content"></div>
@@ -461,25 +457,39 @@ function renderSetup() {
   $('#setup-detection').textContent = matching.length ? `${matching.length} ${platformName(setupPlatform)}${matching.length === 1 ? '' : ' devices'} detected. Close this guide to select it.` : isPreview ? 'Open the desktop app to check the USB connection.' : '';
 }
 
+function connectedPhones() {
+  return state.devices.filter((device) => device.state !== 'offline');
+}
+
+function primaryConnectedPhone() {
+  const connected = connectedPhones();
+  return connected.find((device) => device.id === selectedDeviceId) || connected[0] || null;
+}
+
 function renderOnboarding() {
-  $('#onboarding-progress').textContent = onboardingStep === 'survey' ? '1 of 2' : '2 of 2';
-  if (onboardingStep === 'survey') {
-    setContent('#onboarding-content', `<div class="onboarding-copy"><span class="eyebrow">Welcome to Ghost</span><h1 id="onboarding-title">Let’s set up your devices.</h1><p>Choose your computer and phone. Ghost will show the USB setup for that combination. For wireless setup, choose Connection → Wi-Fi on the map.</p></div><div class="survey-group"><h2>This computer</h2><div class="choice-grid"><button class="choice-card" data-survey-host="mac" aria-pressed="${surveyHost === 'mac'}">${icon('laptop')}<span><strong>Mac</strong><small>macOS</small></span>${icon('check', 'choice-check')}</button><button class="choice-card" data-survey-host="windows" aria-pressed="${surveyHost === 'windows'}">${icon('monitor')}<span><strong>Windows PC</strong><small>Windows 10 or 11</small></span>${icon('check', 'choice-check')}</button></div></div><div class="survey-group"><h2>Your phone</h2><div class="choice-grid"><button class="choice-card" data-survey-phone="ios" aria-pressed="${surveyPhone === 'ios'}">${icon('smartphone')}<span><strong>iPhone</strong><small>iOS 17.4 or later</small></span>${icon('check', 'choice-check')}</button><button class="choice-card" data-survey-phone="android" aria-pressed="${surveyPhone === 'android'}">${icon('smartphone')}<span><strong>Android</strong><small>Android 8 or later</small></span>${icon('check', 'choice-check')}</button></div></div><div class="onboarding-actions"><span>Your choices stay on this computer.</span><button id="onboarding-next" class="primary-button inline" ${!surveyHost || !surveyPhone ? 'disabled' : ''}><span>Continue</span>${icon('arrow-right')}</button></div>`);
-    document.querySelectorAll('[data-survey-host]').forEach((button) => { button.onclick = () => { surveyHost = button.dataset.surveyHost; renderOnboarding(); paintIcons(); }; });
-    document.querySelectorAll('[data-survey-phone]').forEach((button) => { button.onclick = () => { surveyPhone = button.dataset.surveyPhone; renderOnboarding(); paintIcons(); }; });
-    $('#onboarding-next').onclick = () => { if (surveyHost && surveyPhone) { onboardingStep = 'guide'; onboardingChecks.clear(); renderOnboarding(); paintIcons(); } };
-  } else {
-    const guide = guideFor(surveyHost, surveyPhone);
-    const matching = state.devices.filter((device) => device.platform === surveyPhone && device.state !== 'offline');
-    setContent('#onboarding-content', `<button id="onboarding-back" class="back-button">${icon('chevron-left')} Back</button><div class="onboarding-copy guide-copy"><span class="configuration-pill">${guide.title}</span><h1 id="onboarding-title">Prepare your ${platformName(surveyPhone)}.</h1><p>${guide.intro} Check each step as you complete it.</p></div><div class="onboarding-checklist">${guide.steps.map(([title, body], index) => `<label class="checklist-row"><input type="checkbox" data-onboarding-check="${index}" ${onboardingChecks.has(index) ? 'checked' : ''}/><span class="check-control">${icon('check')}</span><span><strong>${title}</strong><small>${body}</small></span></label>`).join('')}</div><div id="onboarding-detection" class="onboarding-detection ${matching.length ? 'connected' : ''}">${matching.length ? `${icon('check')} ${platformName(surveyPhone)} detected over USB.` : `${icon('cable')} ${isPreview ? 'USB detection is available in the desktop app.' : 'Connect your phone when you’re ready.'}`}</div><div class="onboarding-actions"><button id="onboarding-scan" class="secondary-button" ${pending || state.busy ? 'disabled' : ''}>${icon(pending ? 'loader-circle' : 'refresh-cw', pending ? 'spin' : '')} Check connection</button><button id="onboarding-finish" class="primary-button inline" ${pending ? 'disabled' : ''}><span>Continue to map</span>${icon('arrow-right')}</button></div>`);
-    $('#onboarding-back').onclick = () => { onboardingStep = 'survey'; renderOnboarding(); paintIcons(); };
-    document.querySelectorAll('[data-onboarding-check]').forEach((checkbox) => { checkbox.onchange = () => { const index = Number(checkbox.dataset.onboardingCheck); if (checkbox.checked) onboardingChecks.add(index); else onboardingChecks.delete(index); }; });
-    $('#onboarding-scan').onclick = async () => { const result = await runOperation(() => api.scanDevices()); if (result && !result.devices.some((device) => device.platform === surveyPhone && device.state !== 'offline')) $('#onboarding-detection').innerHTML = `${icon('help-circle')} No ${platformName(surveyPhone)} found. Check the cable, unlock the phone, and accept its prompt.`; paintIcons(); };
-    $('#onboarding-finish').onclick = async () => {
-      const result = await runOperation(() => api.updatePreferences({ onboardingComplete: true, hostPlatform: surveyHost, phonePlatform: surveyPhone }));
-      if (result) { setupHost = surveyHost; setupPlatform = surveyPhone; $('#onboarding-dialog').close(); }
-    };
-  }
+  const hostIcon = detectedHost === 'mac' ? 'laptop' : 'monitor';
+  const hostLabel = detectedHost === 'mac' ? 'Mac detected' : 'Windows PC detected';
+  const phone = primaryConnectedPhone();
+  const guidePlatform = phone?.platform || state.preferences.phonePlatform || 'ios';
+  const guide = guideFor(detectedHost, guidePlatform);
+  const phoneConnected = Boolean(phone);
+  const phoneLine = phone
+    ? `${esc(phone.name || platformName(phone.platform))} connected`
+  : isPreview
+    ? 'Phone detection is available in the desktop app.'
+    : 'Connect your phone with a USB data cable. Ghost will detect it here.';
+  setContent('#onboarding-content', `<div class="onboarding-copy"><span class="eyebrow">Welcome to Ghost</span><h1 id="onboarding-title">Let’s set up your devices.</h1><p>Ghost checks this computer and any phone already plugged in. For wireless setup later, choose Connection → Wi-Fi on the map.</p></div><div class="onboarding-status"><div class="onboarding-status-row ${detectedHost ? 'connected' : ''}">${icon(hostIcon)}<div><strong>${hostLabel}</strong><small>${detectedHost === 'mac' ? 'macOS' : 'Windows 10 or 11'}</small></div>${icon('check')}</div><div class="onboarding-status-row ${phoneConnected ? 'connected' : ''}">${icon('smartphone')}<div><strong>${phoneConnected ? `${esc(phone.name || platformName(phone.platform))} connected` : 'Waiting for phone'}</strong><small>${phoneConnected ? `${platformName(phone.platform)}${phone.osVersion ? ` · ${esc(phone.osVersion)}` : ''} · ${phone.connection === 'wifi' ? 'Wi-Fi' : 'USB'}` : phoneLine}</small></div>${phoneConnected ? icon('check') : icon('cable')}</div></div><details class="onboarding-instructions"><summary>Instructions</summary><p class="onboarding-instructions-intro">${guide.intro}</p><ol class="setup-steps onboarding-instruction-steps">${guide.steps.map(([title, body], index) => `<li><span class="step-number">${index + 1}</span><div><h3>${title}</h3><p>${body}</p></div></li>`).join('')}</ol></details><div class="onboarding-actions"><span>${phoneConnected ? 'Ready when you are.' : 'Plug in your phone to continue.'}</span><button id="onboarding-continue" class="primary-button inline" ${!phoneConnected || pending || state.busy ? 'disabled' : ''}><span>Continue</span>${icon('arrow-right')}</button></div>`);
+  $('#onboarding-continue').onclick = async () => {
+    const connected = primaryConnectedPhone();
+    if (!connected) return;
+    const result = await runOperation(() => api.updatePreferences({ onboardingComplete: true, hostPlatform: detectedHost, phonePlatform: connected.platform }));
+    if (result) {
+      setupHost = detectedHost;
+      setupPlatform = connected.platform;
+      selectedDeviceId = connected.id;
+      $('#onboarding-dialog').close();
+    }
+  };
 }
 
 function renderView() {
@@ -527,10 +537,6 @@ async function switchToWifi() {
 function render() { renderConnections(); renderView(); renderDevices(); renderDestination(); renderActions(); renderRoute(); renderSaved(); renderSession(); renderRuntime(); renderSetup(); if ($('#onboarding-dialog').open) renderOnboarding(); paintIcons(); }
 
 function openOnboarding() {
-  surveyHost = state.preferences.hostPlatform || detectedHost;
-  surveyPhone = state.preferences.phonePlatform || state.devices[0]?.platform || null;
-  onboardingStep = 'survey';
-  onboardingChecks.clear();
   if ($('#setup-dialog').open) $('#setup-dialog').close();
   renderOnboarding();
   paintIcons();

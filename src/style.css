@@ -320,6 +320,19 @@ dialog::backdrop { background: rgba(34,39,47,.25); backdrop-filter: blur(12px) s
 .onboarding-detection { margin-top: 13px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; border-radius: 12px; background: var(--fill); color: var(--secondary); font-size: 12px; }
 .onboarding-detection.connected { background: rgba(52,199,89,.11); color: #21863c; }
 .onboarding-detection svg { width: 16px; }
+.onboarding-status { display: grid; gap: 10px; margin: 20px 0 16px; }
+.onboarding-status-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.47); color: var(--secondary); }
+.onboarding-status-row strong { display: block; color: var(--text); font-size: 14px; font-weight: 600; }
+.onboarding-status-row small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.4; }
+.onboarding-status-row > svg { width: 18px; flex: 0 0 auto; color: var(--tertiary); }
+.onboarding-status-row > svg:last-child { margin-left: auto; width: 16px; }
+.onboarding-status-row.connected > svg:last-child { color: #21863c; }
+.onboarding-instructions { margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.35); }
+.onboarding-instructions > summary { cursor: pointer; padding: 11px 14px; font-size: 13px; font-weight: 600; color: var(--secondary); list-style: none; }
+.onboarding-instructions > summary::-webkit-details-marker { display: none; }
+.onboarding-instructions[open] > summary { border-bottom: 1px solid var(--line); }
+.onboarding-instructions-intro { margin: 0; padding: 12px 14px 0; color: var(--secondary); font-size: 13px; line-height: 1.45; }
+.onboarding-instruction-steps { margin: 8px 14px 14px; }
 
 .toast { position: fixed; z-index: 2000; left: 50%; bottom: 26px; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 34px); min-width: 280px; padding: 11px 11px 11px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.84); border-radius: 15px; background: rgba(249,249,250,.93); box-shadow: var(--shadow); backdrop-filter: blur(24px); color: var(--text); font-size: 12px; line-height: 1.45; }
 .toast.error { color: #7a331e; background: rgba(255,247,242,.95); }

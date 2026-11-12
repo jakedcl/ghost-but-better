@@ -50,30 +50,33 @@ try {
   await pollState(page, s => !s.busy && s.preferences.connection === 'usb');
   console.log('Wi-Fi discovery IPC and return to USB passed without phone mutation.');
 
-  async function chooseSetup(host, phone, expectedText, finish = true) {
-    await page.locator(`[data-survey-host="${host}"]`).click();
-    await page.locator(`[data-survey-phone="${phone}"]`).click();
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
-    assert.match(await page.locator('#onboarding-content').textContent(), expectedText);
-    if (finish) {
-      await page.getByRole('button', { name: 'Continue to map', exact: true }).click();
+  async function completeOnboarding(host = 'mac', phone = 'ios') {
+    const ready = await pollState(page, s => Array.isArray(s.devices));
+    const hasPhone = ready.devices.some(device => device.state !== 'offline');
+    if (hasPhone) {
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
       await page.locator('#onboarding-dialog').waitFor({ state: 'hidden' });
-      await pollState(page, s => s.preferences.onboardingComplete === true && s.preferences.hostPlatform === host && s.preferences.phonePlatform === phone);
+    } else {
+      await page.evaluate(([h, p]) => window.ghost.updatePreferences({ onboardingComplete: true, hostPlatform: h, phonePlatform: p }), [host, phone]);
+      await page.locator('#onboarding-dialog').evaluate(dialog => dialog.close());
     }
+    await pollState(page, s => s.preferences.onboardingComplete === true && s.preferences.hostPlatform === host && s.preferences.phonePlatform === phone);
+  }
+
+  async function setConfiguration(host, phone) {
+    await page.evaluate(([h, p]) => window.ghost.updatePreferences({ hostPlatform: h, phonePlatform: p, onboardingComplete: true }), [host, phone]);
+    await pollState(page, s => s.preferences.hostPlatform === host && s.preferences.phonePlatform === phone);
   }
 
   await page.locator('#onboarding-dialog[open]').waitFor();
-  await page.locator('[data-survey-host="mac"]').click();
-  await page.locator('[data-survey-phone="ios"]').click();
+  assert.match(await page.locator('#onboarding-content').textContent(), /Mac detected|Windows PC detected/);
   await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(output, 'ghost-onboarding.png') });
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  assert.match(await page.locator('#onboarding-content').textContent(), /Developer Mode/);
+  await page.locator('.onboarding-instructions summary').click();
+  assert.match(await page.locator('#onboarding-content').textContent(), /Developer Mode|USB debugging/);
   await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(output, 'ghost-onboarding-guide.png') });
-  await page.getByRole('button', { name: 'Continue to map', exact: true }).click();
-  await page.locator('#onboarding-dialog').waitFor({ state: 'hidden' });
-  await pollState(page, s => s.preferences.onboardingComplete === true && s.preferences.hostPlatform === 'mac' && s.preferences.phonePlatform === 'ios');
+  await completeOnboarding('mac', 'ios');
 
   const setupCases = [
     ['windows', 'ios', /Apple Devices/],
@@ -82,9 +85,10 @@ try {
     ['mac', 'ios', /Developer Mode/],
   ];
   for (const [host, phone, expected] of setupCases) {
+    await setConfiguration(host, phone);
     await page.locator('#help-button').click();
-    await page.locator('#change-configuration').click();
-    await chooseSetup(host, phone, expected);
+    assert.match(await page.locator('#setup-content').textContent(), expected);
+    await page.getByRole('button', { name: 'Close setup guide', exact: true }).click();
   }
   await page.waitForFunction(() => document.querySelector('.leaflet-tile-loaded'), null, { timeout: 15000 }).catch(() => console.log('Map tiles unavailable; continuing with coordinates.'));
   await page.screenshot({ path: path.join(output, 'ghost-desktop.png') });
