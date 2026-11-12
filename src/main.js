@@ -82,6 +82,8 @@ let selectedPlace = null;
 let currentView = 'map';
 let locationMode = 'fixed';
 let routeStops = [], routePlan = null;
+const ROUTE_SPEED_OPTIONS = [3, 5, 10, 15, 25, 35, 45, 55, 65, 75];
+let routeSpeedMph = 45;
 let routeLine = null, routeDot = null;
 const routeMarkers = [];
 let setupHost = detectedHost;
@@ -142,6 +144,7 @@ $('#app').innerHTML = `
             <div class="route-plan-actions"><button id="plan-route" class="secondary-button">Plan road route</button><button id="clear-route" class="text-button">Clear</button></div>
             <p class="route-provider">Stops are sent to OSRM when you plan. Roads by OpenStreetMap. Internet required.</p>
             <div id="route-summary" class="route-summary" hidden></div>
+            <label id="route-speed-wrap" class="route-speed" hidden><span>Playback speed</span><select id="route-speed" class="text-input" aria-label="Route playback speed in miles per hour">${ROUTE_SPEED_OPTIONS.map(mph => `<option value="${mph}">${mph} mph</option>`).join('')}</select></label>
             <button id="route-play" class="primary-button" disabled>Start route · 45 mph</button>
             <p id="route-hint" class="action-hint">Add a start and destination, in order.</p>
           </div>
@@ -378,12 +381,18 @@ function renderRoute() {
     routeStops.splice(Number(button.dataset.removeStop), 1); routePlan = null; drawRoute(); renderRoute(); paintIcons();
   }; });
   $('#route-summary').hidden = !routePlan;
-  if (routePlan) setContent('#route-summary', `<div><strong>${(routePlan.distanceMeters / 1609.344).toFixed(2)} miles</strong><span>45 mph · 1 sec updates</span></div><progress aria-label="Route progress" max="${routePlan.distanceMeters}" value="${route?.traveledMeters || 0}"></progress><p>${route?.status === 'completed' ? 'Arrived at destination' : `${routeTime(route?.remainingSeconds ?? routePlan.durationSeconds)} ${active ? 'remaining' : 'at 45 mph'}`}</p>`);
+  const speedMph = route?.speedMph ?? routeSpeedMph;
+  if (route?.speedMph) routeSpeedMph = route.speedMph;
+  if (routePlan) setContent('#route-summary', `<div><strong>${(routePlan.distanceMeters / 1609.344).toFixed(2)} miles</strong><span>${speedMph} mph · 1 sec updates</span></div><progress aria-label="Route progress" max="${routePlan.distanceMeters}" value="${route?.traveledMeters || 0}"></progress><p>${route?.status === 'completed' ? 'Arrived at destination' : `${routeTime(route?.remainingSeconds ?? routePlan.durationSeconds)} ${active ? 'remaining' : `at ${speedMph} mph`}`}</p>`);
+  $('#route-speed-wrap').hidden = !routePlan;
+  const speedSelect = $('#route-speed');
+  speedSelect.value = String(speedMph);
+  speedSelect.disabled = busy || route?.status === 'completed' || (!active && !routePlan);
   const device = state.devices.find(d => d.id === selectedDeviceId);
   const otherSession = state.session && state.session.deviceId !== selectedDeviceId;
   const running = route?.status === 'running', paused = route?.status === 'paused';
   $('#route-play').disabled = busy || (active ? !running && (!paused || !device || otherSession || !['ready', 'setup-required'].includes(device.state)) : !routePlan || device?.state !== 'ready' || Boolean(otherSession));
-  $('#route-play').textContent = busy ? 'Working…' : running ? 'Pause route' : paused ? 'Resume route · 45 mph' : route?.status === 'completed' ? 'Route completed' : 'Start route · 45 mph';
+  $('#route-play').textContent = busy ? 'Working…' : running ? 'Pause route' : paused ? `Resume route · ${speedMph} mph` : route?.status === 'completed' ? 'Route completed' : `Start route · ${speedMph} mph`;
   $('#route-hint').textContent = active ? route.message : otherSession ? 'Restore the current session before switching phones.' : !routePlan ? 'Add a start and destination, then plan the route.' : !device ? 'Connect a phone to start. The route is ready.' : 'Start moves your phone to the first stop, then follows the road.';
   if (route?.point && inRoute) {
     const point = [route.point.latitude, route.point.longitude];
@@ -423,7 +432,8 @@ function renderSession() {
   const recovering = ['waiting', 'unknown', 'error'].includes(session?.status);
   const recoveryText = recovering ? `<span class="session-recovery">${session.autoReconnect ? 'Ghost will retry this phone automatically. Restore cancels retry.' : 'Reconnect this phone, then retry or restore.'}</span>` : '';
   const statusIcon = session?.status === 'reconnecting' ? 'refresh-cw' : session ? ['unknown', 'error', 'waiting'].includes(session.status) ? 'help-circle' : 'map-pin' : 'circle';
-  setContent('#session-status', `<span class="session-status-icon">${icon(statusIcon, session?.status === 'reconnecting' ? 'spin' : '')}</span><div><strong>${session ? session.status === 'active' && state.route ? ({ running: 'Following route · 45 mph', paused: 'Route paused', completed: 'Arrived', starting: 'Starting route…' }[state.route.status]) : labels[session.status] || 'Session needs attention' : 'Ready'}</strong><span>${esc(state.route?.message || session?.message || (session ? session.label || 'Keep your phone connected.' : state.devices.some((device) => device.state === 'ready') ? 'Choose a place to begin.' : 'Connect a phone and choose a place.'))}</span>${recoveryText}${refreshText}</div>${session?.status === 'active' ? '<span class="live-tag"><span></span>Active</span>' : ''}`);
+  const routeSpeed = state.route?.speedMph ?? routeSpeedMph;
+  setContent('#session-status', `<span class="session-status-icon">${icon(statusIcon, session?.status === 'reconnecting' ? 'spin' : '')}</span><div><strong>${session ? session.status === 'active' && state.route ? ({ running: `Following route · ${routeSpeed} mph`, paused: 'Route paused', completed: 'Arrived', starting: 'Starting route…' }[state.route.status]) : labels[session.status] || 'Session needs attention' : 'Ready'}</strong><span>${esc(state.route?.message || session?.message || (session ? session.label || 'Keep your phone connected.' : state.devices.some((device) => device.state === 'ready') ? 'Choose a place to begin.' : 'Connect a phone and choose a place.'))}</span>${recoveryText}${refreshText}</div>${session?.status === 'active' ? '<span class="live-tag"><span></span>Active</span>' : ''}`);
 }
 
 function renderRuntime() {
@@ -479,7 +489,7 @@ function renderView() {
   $('#saved-nav-button').setAttribute('aria-pressed', String(showingSaved));
   $('#panel-eyebrow').textContent = showingSaved ? 'Library' : 'Location';
   $('#panel-title').textContent = showingSaved ? 'Saved places' : locationMode === 'route' ? 'Follow a route' : 'Set a location';
-  $('#panel-subtitle').textContent = showingSaved ? 'Select a place to return to the map.' : locationMode === 'route' ? 'Choose stops. Move along the road at 45 mph.' : 'Choose a phone and a point on the map.';
+  $('#panel-subtitle').textContent = showingSaved ? 'Select a place to return to the map.' : locationMode === 'route' ? `Choose stops. Move along the road at ${state.route?.speedMph ?? routeSpeedMph} mph.` : 'Choose a phone and a point on the map.';
 }
 
 function handoffPhone() {
@@ -579,7 +589,17 @@ $('#plan-route').onclick = async () => {
   const planned = await runOperation(() => api.planRoute(routeStops));
   if (planned) { routePlan = planned; drawRoute(); fitRoute(); renderRoute(); paintIcons(); }
 };
-$('#route-play').onclick = () => runOperation(() => state.route?.status === 'running' ? api.pauseRoute() : state.route?.status === 'paused' ? api.resumeRoute() : api.startRoute({ deviceId: selectedDeviceId, routeId: routePlan?.id }));
+$('#route-speed').onchange = (event) => {
+  const mph = Number(event.target.value);
+  if (!Number.isFinite(mph)) return;
+  if (state.route && state.session) {
+    runOperation(() => api.setRouteSpeed({ speedMph: mph }));
+    return;
+  }
+  routeSpeedMph = mph;
+  renderRoute();
+};
+$('#route-play').onclick = () => runOperation(() => state.route?.status === 'running' ? api.pauseRoute() : state.route?.status === 'paused' ? api.resumeRoute() : api.startRoute({ deviceId: selectedDeviceId, routeId: routePlan?.id, speedMph: routeSpeedMph }));
 $('#restore-button').onclick = () => runOperation(() => api.stopLocation(), 'Restore command accepted. Phone apps may need a moment to refresh.', 'restore');
 $('#toast-close').onclick = () => { $('#toast').hidden = true; clearTimeout(toastTimer); };
 $('#install-runtime').onclick = () => runOperation(() => api.installRuntime(), 'Device tools checked.');

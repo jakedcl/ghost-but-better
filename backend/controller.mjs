@@ -1,7 +1,17 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { place, text, geocoderUrl } from './validation.mjs';
-import { Router, measurePath, pointAlong, ROUTE_SPEED_MPS } from './routing.mjs';
+import { Router, measurePath, pointAlong, mphToMps, DEFAULT_ROUTE_SPEED_MPH, MIN_ROUTE_SPEED_MPH, MAX_ROUTE_SPEED_MPH } from './routing.mjs';
+
+const routeSpeedMessage = mph => `Following the road at ${mph} mph. Sending a location every second.`;
+const normalizeRouteSpeed = mph => {
+  if (!Number.isFinite(mph)) return DEFAULT_ROUTE_SPEED_MPH;
+  const rounded = Math.round(mph);
+  if (rounded < MIN_ROUTE_SPEED_MPH || rounded > MAX_ROUTE_SPEED_MPH) {
+    throw new Error(`Choose a speed between ${MIN_ROUTE_SPEED_MPH} and ${MAX_ROUTE_SPEED_MPH} mph.`);
+  }
+  return rounded;
+};
 
 const REPLACEABLE_SESSION_STATUSES = new Set(['unknown', 'waiting', 'error']);
 const USABLE_REPLACEMENT_STATES = new Set(['ready', 'setup-required']);
@@ -276,7 +286,7 @@ export class Controller extends EventEmitter {
       await this.scan(); return this.snapshot();
     });
   }
-  async applyLocation(input, route = null) {
+  async applyLocation(input, route = null, routeSpeedMph = DEFAULT_ROUTE_SPEED_MPH) {
     const point = place(input);
     return this.exclusive(async () => {
       const device = this.device(input.deviceId);
@@ -292,7 +302,9 @@ export class Controller extends EventEmitter {
       // Journal before device mutation, so a crash cannot discard an unresolved session.
       try { await this.persist(); }
       catch (error) { this.state.session = previous; throw error; }
-      this.state.route = route ? { id: route.id, deviceId: device.id, status: 'starting', speedMph: 45, distanceMeters: route.distanceMeters, traveledMeters: 0, remainingSeconds: route.durationSeconds, point, message: 'Sending the route start to your phone…' } : null;
+      const speedMph = route ? normalizeRouteSpeed(routeSpeedMph) : null;
+      const speedMps = speedMph ? mphToMps(speedMph) : 0;
+      this.state.route = route ? { id: route.id, deviceId: device.id, status: 'starting', speedMph, distanceMeters: route.distanceMeters, traveledMeters: 0, remainingSeconds: route.distanceMeters / speedMps, point, message: 'Sending the route start to your phone…' } : null;
       this.notify();
       this.resumeSessionId = wasLive ? current.id : null;
       this.retryAt = 0; this.retryAttempts = 0;
@@ -439,14 +451,14 @@ export class Controller extends EventEmitter {
     this.routePath = measurePath(route.coordinates);
     return this.getRoute();
   }
-  async startRoute({ deviceId, routeId } = {}) {
+  async startRoute({ deviceId, routeId, speedMph = DEFAULT_ROUTE_SPEED_MPH } = {}) {
     const route = this.plannedRoute;
     if (!route || route.id !== routeId) throw new Error('Plan the route before starting.');
     if (this.state.route && this.state.session) throw new Error('Restore real location before starting another route.');
-    await this.applyLocation({ deviceId, ...pointAlong(this.routePath, 0), label: `Route to ${route.waypoints.at(-1).label}` }, route);
+    await this.applyLocation({ deviceId, ...pointAlong(this.routePath, 0), label: `Route to ${route.waypoints.at(-1).label}` }, route, speedMph);
     if (this.closing || this.suspended || this.state.session?.status !== 'active' || this.state.route?.status !== 'starting') return this.snapshot();
     this.state.route.status = 'running';
-    this.state.route.message = 'Following the road at 45 mph. Sending a location every second.';
+    this.state.route.message = routeSpeedMessage(this.state.route.speedMph);
     this.routeStepAt = this.clock();
     this.scheduleRouteTick(); this.notify(); return this.snapshot();
   }
@@ -479,9 +491,21 @@ export class Controller extends EventEmitter {
           await this.sessionEnded({ deviceId: current.deviceId, sessionId: current.id, error: error.message }); throw error;
         }
       }
-      route.status = 'running'; route.message = 'Following the road at 45 mph. Sending a location every second.';
+      route.status = 'running'; route.message = routeSpeedMessage(route.speedMph);
       this.routeStepAt = this.clock(); this.scheduleRouteTick();
     });
+  }
+  async setRouteSpeed({ speedMph } = {}) {
+    const route = this.state.route;
+    if (!route || !['running', 'paused', 'starting'].includes(route.status)) throw new Error('Start a route before changing speed.');
+    const mph = normalizeRouteSpeed(speedMph);
+    route.speedMph = mph;
+    const speedMps = mphToMps(mph);
+    route.remainingSeconds = (route.distanceMeters - route.traveledMeters) / speedMps;
+    if (route.status === 'running') route.message = routeSpeedMessage(mph);
+    await this.persist();
+    this.notify();
+    return this.snapshot();
   }
   scheduleRouteTick(delay = 1000) {
     clearTimeout(this.routeTimer);
@@ -505,12 +529,13 @@ export class Controller extends EventEmitter {
     const operation = async () => {
       try {
         const device = this.device(current.deviceId);
-        const distance = Math.min(route.distanceMeters, route.traveledMeters + ROUTE_SPEED_MPS * elapsed / 1000);
+        const speedMps = mphToMps(route.speedMph ?? DEFAULT_ROUTE_SPEED_MPH);
+        const distance = Math.min(route.distanceMeters, route.traveledMeters + speedMps * elapsed / 1000);
         const point = pointAlong(this.routePath, distance);
         // Record the attempted point before sending. Recovery holds this point;
         // it never advances the route while transport state is uncertain.
         Object.assign(current, point);
-        Object.assign(route, { point, traveledMeters: distance, remainingSeconds: (route.distanceMeters - distance) / ROUTE_SPEED_MPS });
+        Object.assign(route, { point, traveledMeters: distance, remainingSeconds: (route.distanceMeters - distance) / speedMps });
         const adapter = this.adapters[device.platform];
         const result = await (adapter.update ? adapter.update(device, { ...point, sessionId: current.id }) : adapter.set(device, { ...point, sessionId: current.id }));
         if (this.state.session !== current || current.status !== 'active' || this.closing) return;

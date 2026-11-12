@@ -71,6 +71,7 @@ async function boot() {
     startRoute: value => controller.startRoute(value),
     pauseRoute: () => controller.pauseRoute(),
     resumeRoute: () => controller.resumeRoute(),
+    setRouteSpeed: value => controller.setRouteSpeed(value),
     searchPlaces: query => { geocoder.configure(controller.state.preferences.geocoderUrl || 'https://photon.komoot.io/api/'); return geocoder.search(query); },
     savePlace: value => controller.savePlace(value),
     deletePlace: id => controller.deletePlace(id),
