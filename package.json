@@ -1,9 +1,9 @@
 {
-  "name": "ghost-location",
-  "version": "0.1.8",
+  "name": "ghost-but-better",
+  "version": "0.1.9",
   "private": true,
-  "description": "Choose a place. Set your phone's location over USB or Wi-Fi.",
-  "author": "Ghost contributors",
+  "description": "Fork of Ghost: set a phone's simulated location over USB or Wi-Fi, with no account and no telemetry.",
+  "author": "Jake DeCore-Lurker",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "electron/main.mjs",

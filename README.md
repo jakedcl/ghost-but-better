@@ -1,12 +1,13 @@
-# Ghost
+# Ghost But Better
 
-A small Electron app for setting a fixed phone location or following a road route over USB or Wi-Fi. Search for a
+A fork of **[Ghost](https://github.com/Blueturboguy07/ghost-location)** (GPL-3.0-or-later): a small Electron app for setting a fixed phone location or following a road route over USB or Wi-Fi. Search for a
 place, drop a pin, or enter coordinates, then explicitly apply it to your selected
 phone. Windows and macOS share one interface and use the appropriate iPhone or
 Android adapter.
 
-Current version: **0.1.7**. See [CHANGELOG.md](CHANGELOG.md) for the onboarding,
-interface, Android cleanup, Windows packaging, recovery-record, and reconnection changes.
+This fork removes upstream Publik usage telemetry. **No account** and **no telemetry** in source or installed builds.
+
+Current version: **0.1.9**. See [CHANGELOG.md](CHANGELOG.md) for fork and upstream history.
 
 ![Ghost following an example road route in Chicago](docs/images/ghost-route.png)
 
@@ -14,8 +15,8 @@ interface, Android cleanup, Windows packaging, recovery-record, and reconnection
 
 ## Download and install
 
-Get [Ghost 0.1.7 for Mac or Windows](https://github.com/Blueturboguy07/ghost-location/releases/tag/v0.1.7).
-Follow the [setup guide](SETUP.md) for Mac → iPhone, Windows → iPhone, Mac → Android, or Windows → Android, or use [Publik's guided install](https://publikhq.com/ghost/install).
+Get installers from [GitHub Releases](https://github.com/jakedcl/ghost-but-better/releases) when published, or build locally (see [Build installers](#build-installers)).
+Follow the [setup guide](SETUP.md) for Mac → iPhone, Windows → iPhone, Mac → Android, or Windows → Android.
 
 The downloads include the phone runtimes. No programming tools or Ghost account are needed. These early releases are unsigned; the guide explains opening them and the limits of current device testing.
 
@@ -33,7 +34,7 @@ The downloads include the phone runtimes. No programming tools or Ghost account 
 - Automatic stale recovery-record cleanup when a different usable USB phone appears.
 - Explicit restoration, normal-quit cleanup, and a persisted recovery journal.
 - Honest disconnected/error states: lost connectivity never means “restored”.
-- No account or cloud location history. The only telemetry is an anonymous usage count that you can turn off (see [Usage counts](#usage-counts)).
+- No account, no cloud location history, and no usage telemetry.
 
 ## Development
 
@@ -178,14 +179,6 @@ per second, with no uptime guarantee. Ghost requests it only on **Plan road rout
 See [OSRM's demo policy](https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server).
 A larger public deployment needs its own routing service instead of relying on the demo.
 
-## Usage counts
-
-Since 0.1.8, an installed Ghost build tells Publik that it was opened and, every 30 minutes, that it still runs.
-Each message holds the app name (`ghost`), the app version, the operating system, the processor type and a random
-install ID kept in the `publik` folder of your user account. It holds no location, no phone or device identifier and
-no other content. Turn it off with the environment variable `DO_NOT_TRACK=1` (or `PUBLIK_TELEMETRY=0`). A run from
-source (`npm run dev`, `npm start`) sends nothing. Details: <https://publikhq.com/skills/telemetry.md>.
-
 ## Build installers
 
 ```sh
@@ -203,8 +196,8 @@ device runtimes. Release installers are unsigned. Signing/notarization credentia
 for a trusted macOS launch and a recognized Windows publisher.
 No publishing or repository upload is performed by these commands.
 
-For v0.1.7, a macOS arm64 build produces `Ghost-0.1.7-mac-arm64.dmg` and
-`Ghost-0.1.7-mac-arm64.zip` in `release/`.
+A macOS arm64 build produces `Ghost-<version>-mac-arm64.dmg` and
+`Ghost-<version>-mac-arm64.zip` in `release/`. The packaged app name remains **Ghost** for continuity with upstream.
 
 ### Native CI builds
 
@@ -266,6 +259,6 @@ before claiming all four connections are verified.
 
 ## License
 
-GPL-3.0-or-later. See LICENSE and THIRD_PARTY_NOTICES.md.
+GPL-3.0-or-later. See LICENSE and THIRD_PARTY_NOTICES.md. Ghost But Better is a fork of [ghost-location](https://github.com/Blueturboguy07/ghost-location); upstream copyright notices remain in those files.
 
 For wireless setup, see [the Wi-Fi guide](SETUP.md#connect-over-the-same-wi-fi-network-017). Wi-Fi support is implemented and covered by automated tests; physical phone validation is still needed.
