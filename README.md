@@ -201,13 +201,12 @@ A macOS arm64 build produces `Ghost-<version>-mac-arm64.dmg` and
 
 ### Native CI builds
 
-`.github/workflows/build.yml` defines separate native jobs for Windows x64
-(`windows-2025`), macOS Apple Silicon (`macos-15`), and macOS Intel
-(`macos-15-intel`). Each uses pinned Node.js 24.18.0 and Python 3.12.10, installs
-the npm lockfile with `npm ci`, builds both phone runtimes, runs tests, and produces
-unsigned installers. Action implementations are pinned to commit hashes.
-The Python pin is the latest 3.12 build available for these macOS/Windows targets
-in GitHub's `actions/python-versions` manifest; newer 3.12 entries there are Linux-only.
+`.github/workflows/build.yml` runs one native job on macOS Apple Silicon
+(`macos-15`, `darwin-arm64`). It uses pinned Node.js 24.18.0 and Python 3.12.10,
+installs the npm lockfile with `npm ci`, builds both phone runtimes, runs tests,
+and produces unsigned installers. Action implementations are pinned to commit hashes.
+The Python pin is the latest 3.12 build available for that macOS target in GitHub's
+`actions/python-versions` manifest; newer 3.12 entries there are Linux-only.
 
 The prepack check verifies executable CPU types, the actual iOS executable and
 Python bundle, Android helper version/checksum, ADB files/checksums, license notices,

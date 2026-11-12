@@ -113,7 +113,7 @@ pymobiledevice3 11.12.4, Appium Settings 8.0.9, and Android Platform Tools 37.0.
 | Native interface | Coordinates, saved-place create/rename/delete, setup tabs, preferences, and 960×680 window exercised; no renderer errors. |
 | USB discovery | One physical iPhone running iOS 26.6.1 discovered through the iOS USB adapter. |
 | macOS arm64 installers | DMG and ZIP produced successfully; local unsigned build. |
-| Windows x64 / macOS Intel | Native CI workflow defined; builds have not been run here. |
+| Windows x64 / macOS Intel | Not built in CI; Jake validates locally on Apple Silicon when needed. |
 | Physical Set / Update / Restore | Not exercised on any phone. No phone location commands were sent during these checks. |
 
 Screenshots from the initial packaged-app check were written to `artifacts/`.
