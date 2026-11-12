@@ -10,6 +10,9 @@ export const defaults = () => ({
     onboardingComplete: false,
     hostPlatform: null,
     phonePlatform: null,
+    mapLatitude: null,
+    mapLongitude: null,
+    mapZoom: null,
   }
 });
 

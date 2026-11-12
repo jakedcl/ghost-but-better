@@ -35,6 +35,18 @@ test('stores a valid onboarding configuration and rejects unknown platforms', as
   await assert.rejects(c.updatePreferences({ onboardingComplete: 'yes' }), /onboarding preference/);
 });
 
+test('persists last map camera when coordinates and zoom are valid', async () => {
+  const { c, store } = await fixture();
+  const result = await c.updatePreferences({ mapLatitude: 42.3601, mapLongitude: -71.0589, mapZoom: 12 });
+  assert.equal(result.preferences.mapLatitude, 42.3601);
+  assert.equal(result.preferences.mapLongitude, -71.0589);
+  assert.equal(result.preferences.mapZoom, 12);
+  assert.equal(store.data.preferences.mapZoom, 12);
+  await assert.rejects(c.updatePreferences({ mapLatitude: 95 }), /map latitude/);
+  await assert.rejects(c.updatePreferences({ mapLongitude: 200 }), /map longitude/);
+  await assert.rejects(c.updatePreferences({ mapZoom: 1 }), /map zoom/);
+});
+
 test('journals the exact device before sending coordinates, including zero', async () => {
   const { c, calls, store } = await fixture(); const result = await c.applyLocation(point);
   assert.equal(result.busy, false);

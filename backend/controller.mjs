@@ -589,6 +589,21 @@ export class Controller extends EventEmitter {
       if (!['ios', 'android'].includes(input.phonePlatform)) throw new Error('Invalid phone platform.');
       this.state.preferences.phonePlatform = input.phonePlatform;
     }
+    if (input.mapLatitude != null) {
+      const latitude = Number(input.mapLatitude);
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) throw new Error('Invalid map latitude.');
+      this.state.preferences.mapLatitude = latitude;
+    }
+    if (input.mapLongitude != null) {
+      const longitude = Number(input.mapLongitude);
+      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) throw new Error('Invalid map longitude.');
+      this.state.preferences.mapLongitude = longitude;
+    }
+    if (input.mapZoom != null) {
+      const zoom = Number(input.mapZoom);
+      if (!Number.isFinite(zoom) || zoom < 2 || zoom > 19) throw new Error('Invalid map zoom.');
+      this.state.preferences.mapZoom = zoom;
+    }
     await this.persist(); this.notify(); return this.snapshot();
   }
   async dispose(options) {

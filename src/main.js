@@ -5,9 +5,10 @@ import {
   createIcons, MapPin, Bookmark, Settings2, HelpCircle, ArrowUpRight, ArrowRight,
   Search, Plus, Minus, Crosshair, Smartphone, RefreshCw, ChevronDown, X, Check,
   Circle, Download, Pencil, Trash2, RotateCcw, LoaderCircle, Cable, Laptop, Monitor,
-  ChevronLeft,
+  ChevronLeft, GripVertical,
 } from 'lucide';
 import { createPreviewBridge } from './preview.js';
+import { routePrimaryDisabled, routePrimaryLabel, routePrimaryMode, stopsMatch } from './route-ui.mjs';
 
 const isPreview = !window.ghost;
 const detectedHost = /Windows/i.test(navigator.userAgent) ? 'windows' : 'mac';
@@ -15,7 +16,7 @@ document.documentElement.classList.toggle('host-windows', detectedHost === 'wind
 document.documentElement.classList.toggle('desktop-app', !isPreview);
 const api = window.ghost || createPreviewBridge();
 const dismissedWifi = new Set();
-const icons = { MapPin, Bookmark, Settings2, HelpCircle, ArrowUpRight, ArrowRight, Search, Plus, Minus, Crosshair, Smartphone, RefreshCw, ChevronDown, X, Check, Circle, Download, Pencil, Trash2, RotateCcw, LoaderCircle, Cable, Laptop, Monitor, ChevronLeft };
+const icons = { MapPin, Bookmark, Settings2, HelpCircle, ArrowUpRight, ArrowRight, Search, Plus, Minus, Crosshair, Smartphone, RefreshCw, ChevronDown, X, Check, Circle, Download, Pencil, Trash2, RotateCcw, LoaderCircle, Cable, Laptop, Monitor, ChevronLeft, GripVertical };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const icon = (name, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
@@ -81,18 +82,14 @@ let selectedDeviceId = null;
 let selectedPlace = null;
 let currentView = 'map';
 let locationMode = 'fixed';
-let routeStops = [], routePlan = null;
+let routeStops = [], routePlan = null, routeDragIndex = null;
 const ROUTE_SPEED_OPTIONS = [3, 5, 10, 15, 25, 35, 45, 55, 65, 75];
 let routeSpeedMph = 45;
 let routeLine = null, routeDot = null;
 const routeMarkers = [];
 let setupHost = detectedHost;
 let setupPlatform = 'ios';
-let surveyHost = detectedHost;
-let surveyPhone = null;
-let onboardingStep = 'survey';
 let onboardingShown = false;
-const onboardingChecks = new Set();
 let pending = false;
 let pendingAction = null;
 let searchNumber = 0;
@@ -125,37 +122,43 @@ $('#app').innerHTML = `
       <div id="destination-callout" class="destination-callout" hidden></div>
       <div class="map-controls"><button id="recenter-button" class="map-button" aria-label="Center map on selected place" title="Center map">${icon('crosshair')}</button><div class="zoom-buttons"><button id="zoom-in" class="map-button" aria-label="Zoom in" title="Zoom in">${icon('plus')}</button><button id="zoom-out" class="map-button" aria-label="Zoom out" title="Zoom out">${icon('minus')}</button></div></div>
       <div class="map-bottom"><div id="session-status" class="session-status" role="status"></div></div>
-      <div class="map-footer"><span id="map-coordinates">41.88270° N · 87.62330° W</span><span><a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a></span></div>
+      <div class="map-footer"><span id="map-coordinates">20.00000° N · 0.00000° E</span><span><a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a></span></div>
     </main>
 
     <aside class="control-panel">
       <div class="panel-scroll">
         <div class="panel-heading"><span class="eyebrow" id="panel-eyebrow">Location</span><h1 id="panel-title">Set a location</h1><p id="panel-subtitle">Choose a phone and a point on the map.</p></div>
-        <div class="location-modes" role="group" aria-label="Location mode"><button data-location-mode="fixed" aria-pressed="true">Fixed location</button><button data-location-mode="route" aria-pressed="false">Route</button></div>
-        <section class="device-section" aria-labelledby="device-label"><div class="section-heading"><h2 id="device-label">Phone</h2><button id="scan-button" class="icon-button" aria-label="Refresh connected devices" title="Refresh connected devices">${icon('refresh-cw')}</button></div><div id="device-area"></div><div id="wifi-prompt" class="wifi-prompt" hidden><strong>Switch to Wi-Fi?</strong><p>Your phone is working over USB and this computer has Wi-Fi. Keep both on the same network and leave the cable connected until confirmed.</p><p id="wifi-prompt-android" hidden>Enables network debugging on Android. Use a trusted network; restart the phone to turn it off.</p><div><button id="wifi-prompt-switch" class="secondary-button compact">Switch to Wi-Fi</button><button id="wifi-prompt-dismiss" class="text-button">Stay on USB</button></div></div><button id="connection-options" class="setup-link">Connection: USB · Change</button></section>
-        <section class="destination-section" aria-labelledby="destination-label">
-          <div class="section-heading"><h2 id="destination-label">Destination</h2><button id="save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
-          <div id="destination-summary"></div>
+        <section class="device-section panel-device-top" aria-labelledby="device-label"><div class="section-heading"><h2 id="device-label">Phone</h2><button id="scan-button" class="icon-button" aria-label="Refresh connected devices" title="Refresh connected devices">${icon('refresh-cw')}</button></div><div id="device-area"></div><div id="wifi-prompt" class="wifi-prompt" hidden><strong>Switch to Wi-Fi?</strong><p>Your phone is working over USB and this computer has Wi-Fi. Keep both on the same network and leave the cable connected until confirmed.</p><p id="wifi-prompt-android" hidden>Enables network debugging on Android. Use a trusted network; restart the phone to turn it off.</p><div><button id="wifi-prompt-switch" class="secondary-button compact">Switch to Wi-Fi</button><button id="wifi-prompt-dismiss" class="text-button">Stay on USB</button></div></div><button id="connection-options" class="setup-link">Connection: USB · Change</button></section>
+        <div class="location-modes panel-mode-tabs" role="group" aria-label="Location mode"><button data-location-mode="fixed" aria-pressed="true">Fixed location</button><button data-location-mode="route" aria-pressed="false">Route</button></div>
+        <div id="pin-entry-panel" class="pin-entry-panel">
           <form id="coordinate-form" class="coordinate-form"><label><span>Latitude</span><input id="latitude" type="number" min="-90" max="90" step="any" placeholder="41.88270" required aria-label="Latitude" /></label><label><span>Longitude</span><input id="longitude" type="number" min="-180" max="180" step="any" placeholder="−87.62330" required aria-label="Longitude" /></label><button type="submit" class="coordinate-submit" aria-label="Select these coordinates" title="Select these coordinates">${icon('arrow-right')}</button></form>
           <p class="coordinate-hint">Search, enter coordinates, or click the map.</p>
-          <div id="route-controls" hidden>
-            <button id="add-route-stop" class="secondary-button">${icon('plus')} Add selected pin to route</button>
-            <ol id="route-stops" class="route-stops"></ol>
-            <div class="route-plan-actions"><button id="plan-route" class="secondary-button">Plan road route</button><button id="clear-route" class="text-button">Clear</button></div>
+        </div>
+        <section id="fixed-mode-panel" class="destination-section mode-panel" aria-labelledby="destination-label">
+          <div class="section-heading"><h2 id="destination-label">Destination</h2><button id="save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
+          <div id="destination-summary"></div>
+          <div id="fixed-actions"><button id="apply-button" class="primary-button" disabled><span>Set location</span>${icon('arrow-up-right')}</button><p id="apply-hint" class="action-hint">Connect a phone to get started.</p></div><button id="restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
+        </section>
+        <section id="route-mode-panel" class="destination-section mode-panel" aria-labelledby="route-destination-label" hidden>
+          <div class="section-heading"><h2 id="route-destination-label">Destination</h2><button id="route-save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
+          <div id="route-controls">
+            <div id="route-pin-row" class="route-pin-row" hidden></div>
+            <ol id="route-stops" class="route-stops route-stop-list"></ol>
+            <div class="route-plan-actions"><button id="clear-route" class="text-button">Clear</button></div>
             <p class="route-provider">Stops are sent to OSRM when you plan. Roads by OpenStreetMap. Internet required.</p>
             <div id="route-summary" class="route-summary" hidden></div>
             <label id="route-speed-wrap" class="route-speed" hidden><span>Playback speed</span><select id="route-speed" class="text-input" aria-label="Route playback speed in miles per hour">${ROUTE_SPEED_OPTIONS.map(mph => `<option value="${mph}">${mph} mph</option>`).join('')}</select></label>
-            <button id="route-play" class="primary-button" disabled>Start route · 45 mph</button>
-            <p id="route-hint" class="action-hint">Add a start and destination, in order.</p>
+            <button id="route-play" class="primary-button" disabled>Plan road route</button>
+            <p id="route-hint" class="action-hint">Add a start and destination, then plan the route.</p>
           </div>
-          <div id="fixed-actions"><button id="apply-button" class="primary-button" disabled><span>Set location</span>${icon('arrow-up-right')}</button><p id="apply-hint" class="action-hint">Connect a phone to get started.</p></div><button id="restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
+          <button id="route-restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
         </section>
         <section class="saved-section" aria-labelledby="saved-label"><div class="section-heading"><h2 id="saved-label">Saved places <span id="saved-count" class="count">0</span></h2><button id="view-saved-button" class="text-button">View all ${icon('arrow-right')}</button></div><div id="saved-list"></div></section>
       </div>
     </aside>
   </div>
 
-  <dialog id="onboarding-dialog" class="onboarding-dialog" aria-labelledby="onboarding-title"><div class="onboarding-chrome"><span class="onboarding-brand">${icon('map-pin')} Ghost</span><span id="onboarding-progress">1 of 2</span></div><div id="onboarding-content"></div></dialog>
+  <dialog id="onboarding-dialog" class="onboarding-dialog" aria-labelledby="onboarding-title"><div class="onboarding-chrome"><span class="onboarding-brand">${icon('map-pin')} Ghost</span><span id="onboarding-progress" hidden>Setup</span></div><div id="onboarding-content"></div></dialog>
 
   <dialog id="setup-dialog" class="sheet-dialog" aria-labelledby="setup-title">
     <div class="sheet-heading"><div><span class="eyebrow">Device setup</span><h2 id="setup-title">Setup guide</h2></div><button class="icon-button" data-close="setup-dialog" aria-label="Close setup guide">${icon('x')}</button></div><p id="setup-intro" class="sheet-intro"></p><div id="setup-content"></div>
@@ -208,7 +211,10 @@ $('#app').innerHTML = `
   <div id="toast" class="toast" role="status" hidden><span id="toast-icon"></span><span id="toast-message"></span><button id="toast-close" class="icon-button" aria-label="Dismiss notification">${icon('x')}</button></div>
 `;
 
-const map = L.map('map', { zoomControl: false, attributionControl: true, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView([41.8827, -87.6233], 13);
+const DEFAULT_WORLD_VIEW = { latitude: 20, longitude: 0, zoom: 2 };
+const map = L.map('map', { zoomControl: false, attributionControl: true, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView([DEFAULT_WORLD_VIEW.latitude, DEFAULT_WORLD_VIEW.longitude], DEFAULT_WORLD_VIEW.zoom);
+let mapCenterInitialized = false;
+let mapCenterSaveTimer;
 map.attributionControl.setPrefix(false);
 const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors', keepBuffer: 1, updateWhenIdle: true }).addTo(map);
 let tileErrors = 0;
@@ -219,6 +225,61 @@ let marker = null;
 
 function guideFor(host = setupHost, phone = setupPlatform) { return setupGuides[`${host}:${phone}`]; }
 function platformName(platform) { return platform === 'ios' ? 'iPhone' : 'Android'; }
+
+function savedMapCenter(preferences = {}) {
+  const latitude = Number(preferences.mapLatitude);
+  const longitude = Number(preferences.mapLongitude);
+  const zoom = Number(preferences.mapZoom);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(zoom)) return null;
+  return { latitude, longitude, zoom };
+}
+
+function phoneMapCenter() {
+  if (state.session && Number.isFinite(state.session.latitude) && Number.isFinite(state.session.longitude)) {
+    return { latitude: state.session.latitude, longitude: state.session.longitude, zoom: 14 };
+  }
+  const recent = state.recentPlaces?.[0];
+  if (recent && Number.isFinite(recent.latitude) && Number.isFinite(recent.longitude)) {
+    return { latitude: recent.latitude, longitude: recent.longitude, zoom: 13 };
+  }
+  return null;
+}
+
+function applyMapCenter(center, animate = false) {
+  if (!center) return;
+  const position = [center.latitude, center.longitude];
+  const zoom = center.zoom ?? Math.max(map.getZoom(), 13);
+  if (animate) map.flyTo(position, zoom, { duration: 0.8 });
+  else map.setView(position, zoom);
+  const mapCenter = map.getCenter().wrap();
+  $('#map-coordinates').textContent = `${formatCoordinate(mapCenter.lat)} · ${formatCoordinate(mapCenter.lng, false)}`;
+}
+
+function scheduleMapCenterSave() {
+  clearTimeout(mapCenterSaveTimer);
+  mapCenterSaveTimer = setTimeout(() => {
+    const center = map.getCenter().wrap();
+    const zoom = map.getZoom();
+    api.updatePreferences({ mapLatitude: center.lat, mapLongitude: center.lng, mapZoom: zoom }).catch(() => {});
+  }, 800);
+}
+
+async function initializeMapCenter() {
+  if (mapCenterInitialized) return;
+  const hostPosition = await new Promise((resolve) => {
+    if (isPreview || !navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, zoom: 13 }),
+      () => resolve(null),
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8000 },
+    );
+  });
+  applyMapCenter(hostPosition || phoneMapCenter() || savedMapCenter(state.preferences) || DEFAULT_WORLD_VIEW, Boolean(hostPosition));
+  mapCenterInitialized = true;
+}
 
 function notify(message, error = false) {
   clearTimeout(toastTimer);
@@ -319,6 +380,7 @@ function renderDestination() {
     ? `<div class="destination-name">${icon('map-pin')}<div><strong>${esc(selectedPlace.label)}</strong><span>${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}</span></div></div>`
     : `<div class="destination-empty">${icon('map-pin')}<div><strong>No destination selected</strong><span>Drop a pin anywhere on the map.</span></div></div>`);
   $('#save-button').disabled = !selectedPlace || pending;
+  if ($('#route-save-button')) $('#route-save-button').disabled = !selectedPlace || pending;
   $('#destination-callout').hidden = !selectedPlace || locationMode === 'route';
   if (selectedPlace) setContent('#destination-callout', `<strong>${esc(selectedPlace.label)}</strong><span>${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}</span>`);
 }
@@ -335,8 +397,14 @@ function renderActions() {
   $('#apply-button').disabled = busy || !selectedPlace || !canApply || Boolean(otherSession);
   setContent('#apply-button', `<span>${label}</span>${icon(busy ? 'loader-circle' : retry ? 'refresh-cw' : 'arrow-up-right', busy ? 'spin' : '')}`);
   $('#apply-hint').textContent = pendingAction === 'restore' ? 'Stopping automatic retry and requesting real location.' : status === 'reconnecting' ? 'Reconnecting to the same phone. Keep your phone connected.' : busy ? 'Keep your phone connected.' : otherSession ? 'Restore the current session before switching phones.' : !device || device.state === 'offline' ? state.session ? 'Reconnect the same phone to continue.' : 'Connect a phone to get started.' : reconnectIOS ? 'Reconnect and apply this pin to the same iPhone.' : device.state !== 'ready' ? 'Finish device setup to set a location.' : !selectedPlace ? 'Choose a destination on the map.' : retry ? 'Retry this pin on the same phone, or restore real location.' : 'Your phone changes only when you press this button.';
-  $('#restore-button').disabled = !state.session || pending || (busy && status !== 'reconnecting');
-  setContent('#restore-button', `${icon(pendingAction === 'restore' ? 'loader-circle' : 'rotate-ccw', pendingAction === 'restore' ? 'spin' : '')} ${pendingAction === 'restore' ? 'Stopping simulation…' : 'Restore real location'}`);
+  const restoreDisabled = !state.session || pending || (busy && status !== 'reconnecting');
+  const restoreHtml = `${icon(pendingAction === 'restore' ? 'loader-circle' : 'rotate-ccw', pendingAction === 'restore' ? 'spin' : '')} ${pendingAction === 'restore' ? 'Stopping simulation…' : 'Restore real location'}`;
+  $('#restore-button').disabled = restoreDisabled;
+  setContent('#restore-button', restoreHtml);
+  if ($('#route-restore-button')) {
+    $('#route-restore-button').disabled = restoreDisabled;
+    setContent('#route-restore-button', restoreHtml);
+  }
 }
 
 function placeItem(place) {
@@ -357,8 +425,33 @@ function drawRoute() {
     routeMarkers.push(L.marker(latlng, { interactive: false, icon: L.divIcon({ className: 'route-stop-marker', html: `<span>${index + 1}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map));
   });
 }
+function addSelectedRouteStop() {
+  if (!selectedPlace || activeRoutePlayback() || routeStops.length >= 12) return;
+  if (routeStops.some((stop) => stopsMatch(stop, selectedPlace))) return;
+  routeStops.push({ ...selectedPlace, label: `${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}` });
+  routePlan = null;
+  drawRoute();
+  renderRoute();
+  paintIcons();
+}
+
+function activeRoutePlayback() {
+  const route = state.route;
+  return Boolean(route && state.session);
+}
+
+function moveRouteStop(from, to) {
+  if (from === to || from < 0 || to < 0 || from >= routeStops.length || to >= routeStops.length) return;
+  const [stop] = routeStops.splice(from, 1);
+  routeStops.splice(to, 0, stop);
+  routePlan = null;
+  drawRoute();
+  renderRoute();
+  paintIcons();
+}
+
 function renderRoute() {
-  const route = state.route, active = Boolean(route && state.session), inRoute = locationMode === 'route';
+  const route = state.route, active = activeRoutePlayback(), inRoute = locationMode === 'route';
   const busy = pending || state.busy;
   const panel = $('.control-panel'), wasActive = panel.classList.contains('route-active');
   panel.classList.toggle('route-active', active);
@@ -367,19 +460,39 @@ function renderRoute() {
     if (active && map.hasLayer(marker)) marker.remove();
     if (!active && !map.hasLayer(marker)) marker.addTo(map);
   }
-  $('#route-controls').hidden = !inRoute;
-  $('#fixed-actions').hidden = inRoute;
   document.querySelectorAll('[data-location-mode]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.locationMode === locationMode));
     button.disabled = busy || (active && button.dataset.locationMode === 'fixed');
   });
-  $('#add-route-stop').disabled = !selectedPlace || active || busy || routeStops.length >= 12;
-  $('#plan-route').disabled = routeStops.length < 2 || active || busy;
   $('#clear-route').disabled = !routeStops.length || active || busy;
-  setContent('#route-stops', routeStops.map((stop, i) => `<li><span class="route-stop-number">${i + 1}</span><div><strong>${esc(stop.label)}</strong><small>${i === 0 ? 'Start' : i === routeStops.length - 1 ? 'Destination' : 'Via'}</small></div><button class="icon-button" data-remove-stop="${i}" aria-label="Remove stop ${i + 1}" ${active || busy ? 'disabled' : ''}>${icon('x')}</button></li>`).join(''));
+  const selectedAlreadyAdded = selectedPlace && routeStops.some((stop) => stopsMatch(stop, selectedPlace));
+  const canEditStops = !active && !busy;
+  if (inRoute) {
+    if (selectedPlace && !selectedAlreadyAdded) {
+      $('#route-pin-row').hidden = false;
+      setContent('#route-pin-row', `<button id="add-route-stop-pin" class="route-stop-control" type="button" aria-label="Add this stop to the route" ${canEditStops ? '' : 'disabled'}>${icon('plus')}</button><div class="route-stop-copy"><strong>${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}</strong><small>Drop or select another pin, then add.</small></div>`);
+      if ($('#add-route-stop-pin')) $('#add-route-stop-pin').onclick = addSelectedRouteStop;
+    } else {
+      $('#route-pin-row').hidden = true;
+      setContent('#route-pin-row', '');
+    }
+  }
+  setContent('#route-stops', routeStops.map((stop, i) => `<li class="route-stop-item" draggable="${canEditStops ? 'true' : 'false'}" data-stop-index="${i}"><span class="route-stop-control" aria-hidden="true">${icon('grip-vertical')}</span><span class="route-stop-number">${i + 1}</span><div class="route-stop-copy"><strong>${formatCoordinate(stop.latitude)} · ${formatCoordinate(stop.longitude, false)}</strong><small>${i === 0 ? 'Start' : i === routeStops.length - 1 ? 'Destination' : 'Via'}</small></div><button class="icon-button" data-remove-stop="${i}" aria-label="Remove stop ${i + 1}" ${canEditStops ? '' : 'disabled'}>${icon('x')}</button></li>`).join(''));
   document.querySelectorAll('[data-remove-stop]').forEach(button => { button.onclick = () => {
     routeStops.splice(Number(button.dataset.removeStop), 1); routePlan = null; drawRoute(); renderRoute(); paintIcons();
   }; });
+  document.querySelectorAll('.route-stop-item[draggable="true"]').forEach((item) => {
+    item.ondragstart = (event) => { routeDragIndex = Number(item.dataset.stopIndex); item.classList.add('dragging'); event.dataTransfer?.setData('text/plain', item.dataset.stopIndex); };
+    item.ondragend = () => { routeDragIndex = null; item.classList.remove('dragging'); };
+    item.ondragover = (event) => { event.preventDefault(); item.classList.add('drop-target'); };
+    item.ondragleave = () => item.classList.remove('drop-target');
+    item.ondrop = (event) => {
+      event.preventDefault();
+      item.classList.remove('drop-target');
+      if (routeDragIndex == null) return;
+      moveRouteStop(routeDragIndex, Number(item.dataset.stopIndex));
+    };
+  });
   $('#route-summary').hidden = !routePlan;
   const speedMph = route?.speedMph ?? routeSpeedMph;
   if (route?.speedMph) routeSpeedMph = route.speedMph;
@@ -390,10 +503,15 @@ function renderRoute() {
   speedSelect.disabled = busy || route?.status === 'completed' || (!active && !routePlan);
   const device = state.devices.find(d => d.id === selectedDeviceId);
   const otherSession = state.session && state.session.deviceId !== selectedDeviceId;
-  const running = route?.status === 'running', paused = route?.status === 'paused';
-  $('#route-play').disabled = busy || (active ? !running && (!paused || !device || otherSession || !['ready', 'setup-required'].includes(device.state)) : !routePlan || device?.state !== 'ready' || Boolean(otherSession));
-  $('#route-play').textContent = busy ? 'Working…' : running ? 'Pause route' : paused ? `Resume route · ${speedMph} mph` : route?.status === 'completed' ? 'Route completed' : `Start route · ${speedMph} mph`;
-  $('#route-hint').textContent = active ? route.message : otherSession ? 'Restore the current session before switching phones.' : !routePlan ? 'Add a start and destination, then plan the route.' : !device ? 'Connect a phone to start. The route is ready.' : 'Start moves your phone to the first stop, then follows the road.';
+  const running = route?.status === 'running', paused = route?.status === 'paused', completed = route?.status === 'completed';
+  const hasPlan = Boolean(routePlan);
+  const primary = routePrimaryLabel({ busy, running, paused, completed, hasPlan, stopCount: routeStops.length, speedMph });
+  $('#route-play').disabled = routePrimaryDisabled({
+    busy, active, running, paused, device, otherSession, hasPlan, stopCount: routeStops.length, deviceReady: device?.state === 'ready',
+  });
+  $('#route-play').textContent = primary;
+  $('#route-play').dataset.routeAction = routePrimaryMode({ active, running, paused, completed, hasPlan, stopCount: routeStops.length });
+  $('#route-hint').textContent = active ? route.message : otherSession ? 'Restore the current session before switching phones.' : !hasPlan ? 'Add at least two stops, then plan the route.' : !device ? 'Connect a phone to start. The route is ready.' : running ? 'Pause keeps the route at the current point.' : 'Start moves your phone to the first stop, then follows the road.';
   if (route?.point && inRoute) {
     const point = [route.point.latitude, route.point.longitude];
     if (!routeDot) routeDot = L.circleMarker(point, { radius: 9, color: 'white', weight: 3, fillColor: '#087bff', fillOpacity: 1, className: 'route-location-dot', interactive: false }).addTo(map);
@@ -461,35 +579,53 @@ function renderSetup() {
   $('#setup-detection').textContent = matching.length ? `${matching.length} ${platformName(setupPlatform)}${matching.length === 1 ? '' : ' devices'} detected. Close this guide to select it.` : isPreview ? 'Open the desktop app to check the USB connection.' : '';
 }
 
+function connectedPhones() {
+  return state.devices.filter((device) => device.state !== 'offline');
+}
+
+function primaryConnectedPhone() {
+  const connected = connectedPhones();
+  return connected.find((device) => device.id === selectedDeviceId) || connected[0] || null;
+}
+
 function renderOnboarding() {
-  $('#onboarding-progress').textContent = onboardingStep === 'survey' ? '1 of 2' : '2 of 2';
-  if (onboardingStep === 'survey') {
-    setContent('#onboarding-content', `<div class="onboarding-copy"><span class="eyebrow">Welcome to Ghost</span><h1 id="onboarding-title">Let’s set up your devices.</h1><p>Choose your computer and phone. Ghost will show the USB setup for that combination. For wireless setup, choose Connection → Wi-Fi on the map.</p></div><div class="survey-group"><h2>This computer</h2><div class="choice-grid"><button class="choice-card" data-survey-host="mac" aria-pressed="${surveyHost === 'mac'}">${icon('laptop')}<span><strong>Mac</strong><small>macOS</small></span>${icon('check', 'choice-check')}</button><button class="choice-card" data-survey-host="windows" aria-pressed="${surveyHost === 'windows'}">${icon('monitor')}<span><strong>Windows PC</strong><small>Windows 10 or 11</small></span>${icon('check', 'choice-check')}</button></div></div><div class="survey-group"><h2>Your phone</h2><div class="choice-grid"><button class="choice-card" data-survey-phone="ios" aria-pressed="${surveyPhone === 'ios'}">${icon('smartphone')}<span><strong>iPhone</strong><small>iOS 17.4 or later</small></span>${icon('check', 'choice-check')}</button><button class="choice-card" data-survey-phone="android" aria-pressed="${surveyPhone === 'android'}">${icon('smartphone')}<span><strong>Android</strong><small>Android 8 or later</small></span>${icon('check', 'choice-check')}</button></div></div><div class="onboarding-actions"><span>Your choices stay on this computer.</span><button id="onboarding-next" class="primary-button inline" ${!surveyHost || !surveyPhone ? 'disabled' : ''}><span>Continue</span>${icon('arrow-right')}</button></div>`);
-    document.querySelectorAll('[data-survey-host]').forEach((button) => { button.onclick = () => { surveyHost = button.dataset.surveyHost; renderOnboarding(); paintIcons(); }; });
-    document.querySelectorAll('[data-survey-phone]').forEach((button) => { button.onclick = () => { surveyPhone = button.dataset.surveyPhone; renderOnboarding(); paintIcons(); }; });
-    $('#onboarding-next').onclick = () => { if (surveyHost && surveyPhone) { onboardingStep = 'guide'; onboardingChecks.clear(); renderOnboarding(); paintIcons(); } };
-  } else {
-    const guide = guideFor(surveyHost, surveyPhone);
-    const matching = state.devices.filter((device) => device.platform === surveyPhone && device.state !== 'offline');
-    setContent('#onboarding-content', `<button id="onboarding-back" class="back-button">${icon('chevron-left')} Back</button><div class="onboarding-copy guide-copy"><span class="configuration-pill">${guide.title}</span><h1 id="onboarding-title">Prepare your ${platformName(surveyPhone)}.</h1><p>${guide.intro} Check each step as you complete it.</p></div><div class="onboarding-checklist">${guide.steps.map(([title, body], index) => `<label class="checklist-row"><input type="checkbox" data-onboarding-check="${index}" ${onboardingChecks.has(index) ? 'checked' : ''}/><span class="check-control">${icon('check')}</span><span><strong>${title}</strong><small>${body}</small></span></label>`).join('')}</div><div id="onboarding-detection" class="onboarding-detection ${matching.length ? 'connected' : ''}">${matching.length ? `${icon('check')} ${platformName(surveyPhone)} detected over USB.` : `${icon('cable')} ${isPreview ? 'USB detection is available in the desktop app.' : 'Connect your phone when you’re ready.'}`}</div><div class="onboarding-actions"><button id="onboarding-scan" class="secondary-button" ${pending || state.busy ? 'disabled' : ''}>${icon(pending ? 'loader-circle' : 'refresh-cw', pending ? 'spin' : '')} Check connection</button><button id="onboarding-finish" class="primary-button inline" ${pending ? 'disabled' : ''}><span>Continue to map</span>${icon('arrow-right')}</button></div>`);
-    $('#onboarding-back').onclick = () => { onboardingStep = 'survey'; renderOnboarding(); paintIcons(); };
-    document.querySelectorAll('[data-onboarding-check]').forEach((checkbox) => { checkbox.onchange = () => { const index = Number(checkbox.dataset.onboardingCheck); if (checkbox.checked) onboardingChecks.add(index); else onboardingChecks.delete(index); }; });
-    $('#onboarding-scan').onclick = async () => { const result = await runOperation(() => api.scanDevices()); if (result && !result.devices.some((device) => device.platform === surveyPhone && device.state !== 'offline')) $('#onboarding-detection').innerHTML = `${icon('help-circle')} No ${platformName(surveyPhone)} found. Check the cable, unlock the phone, and accept its prompt.`; paintIcons(); };
-    $('#onboarding-finish').onclick = async () => {
-      const result = await runOperation(() => api.updatePreferences({ onboardingComplete: true, hostPlatform: surveyHost, phonePlatform: surveyPhone }));
-      if (result) { setupHost = surveyHost; setupPlatform = surveyPhone; $('#onboarding-dialog').close(); }
-    };
-  }
+  const hostIcon = detectedHost === 'mac' ? 'laptop' : 'monitor';
+  const hostLabel = detectedHost === 'mac' ? 'Mac detected' : 'Windows PC detected';
+  const phone = primaryConnectedPhone();
+  const guidePlatform = phone?.platform || state.preferences.phonePlatform || 'ios';
+  const guide = guideFor(detectedHost, guidePlatform);
+  const phoneConnected = Boolean(phone);
+  const phoneLine = phone
+    ? `${esc(phone.name || platformName(phone.platform))} connected`
+  : isPreview
+    ? 'Phone detection is available in the desktop app.'
+    : 'Connect your phone with a USB data cable. Ghost will detect it here.';
+  setContent('#onboarding-content', `<div class="onboarding-copy"><span class="eyebrow">Welcome to Ghost</span><h1 id="onboarding-title">Let’s set up your devices.</h1><p>Ghost checks this computer and any phone already plugged in. For wireless setup later, choose Connection → Wi-Fi on the map.</p></div><div class="onboarding-status"><div class="onboarding-status-row ${detectedHost ? 'connected' : ''}">${icon(hostIcon)}<div><strong>${hostLabel}</strong><small>${detectedHost === 'mac' ? 'macOS' : 'Windows 10 or 11'}</small></div>${icon('check')}</div><div class="onboarding-status-row ${phoneConnected ? 'connected' : ''}">${icon('smartphone')}<div><strong>${phoneConnected ? `${esc(phone.name || platformName(phone.platform))} connected` : 'Waiting for phone'}</strong><small>${phoneConnected ? `${platformName(phone.platform)}${phone.osVersion ? ` · ${esc(phone.osVersion)}` : ''} · ${phone.connection === 'wifi' ? 'Wi-Fi' : 'USB'}` : phoneLine}</small></div>${phoneConnected ? icon('check') : icon('cable')}</div></div><details class="onboarding-instructions"><summary>Instructions</summary><p class="onboarding-instructions-intro">${guide.intro}</p><ol class="setup-steps onboarding-instruction-steps">${guide.steps.map(([title, body], index) => `<li><span class="step-number">${index + 1}</span><div><h3>${title}</h3><p>${body}</p></div></li>`).join('')}</ol></details><div class="onboarding-actions"><span>${phoneConnected ? 'Ready when you are.' : 'Plug in your phone to continue.'}</span><button id="onboarding-continue" class="primary-button inline" ${!phoneConnected || pending || state.busy ? 'disabled' : ''}><span>Continue</span>${icon('arrow-right')}</button></div>`);
+  $('#onboarding-continue').onclick = async () => {
+    const connected = primaryConnectedPhone();
+    if (!connected) return;
+    const result = await runOperation(() => api.updatePreferences({ onboardingComplete: true, hostPlatform: detectedHost, phonePlatform: connected.platform }));
+    if (result) {
+      setupHost = detectedHost;
+      setupPlatform = connected.platform;
+      selectedDeviceId = connected.id;
+      $('#onboarding-dialog').close();
+    }
+  };
 }
 
 function renderView() {
   const showingSaved = currentView === 'saved';
+  const inRoute = !showingSaved && locationMode === 'route';
   $('.control-panel').classList.toggle('show-saved', showingSaved);
   $('#saved-nav-button').classList.toggle('active', showingSaved);
   $('#saved-nav-button').setAttribute('aria-pressed', String(showingSaved));
   $('#panel-eyebrow').textContent = showingSaved ? 'Library' : 'Location';
   $('#panel-title').textContent = showingSaved ? 'Saved places' : locationMode === 'route' ? 'Follow a route' : 'Set a location';
   $('#panel-subtitle').textContent = showingSaved ? 'Select a place to return to the map.' : locationMode === 'route' ? `Choose stops. Move along the road at ${state.route?.speedMph ?? routeSpeedMph} mph.` : 'Choose a phone and a point on the map.';
+  $('#pin-entry-panel').hidden = showingSaved || inRoute;
+  $('#fixed-mode-panel').hidden = showingSaved || locationMode !== 'fixed';
+  $('#route-mode-panel').hidden = showingSaved || locationMode !== 'route';
 }
 
 function handoffPhone() {
@@ -527,10 +663,6 @@ async function switchToWifi() {
 function render() { renderConnections(); renderView(); renderDevices(); renderDestination(); renderActions(); renderRoute(); renderSaved(); renderSession(); renderRuntime(); renderSetup(); if ($('#onboarding-dialog').open) renderOnboarding(); paintIcons(); }
 
 function openOnboarding() {
-  surveyHost = state.preferences.hostPlatform || detectedHost;
-  surveyPhone = state.preferences.phonePlatform || state.devices[0]?.platform || null;
-  onboardingStep = 'survey';
-  onboardingChecks.clear();
   if ($('#setup-dialog').open) $('#setup-dialog').close();
   renderOnboarding();
   paintIcons();
@@ -560,14 +692,19 @@ function openSave(place = selectedPlace) {
 }
 
 map.on('click', (event) => { const point = event.latlng.wrap(); selectPlace({ latitude: point.lat, longitude: point.lng, label: 'Dropped pin' }, false); });
-map.on('moveend', () => { const center = map.getCenter().wrap(); $('#map-coordinates').textContent = `${formatCoordinate(center.lat)} · ${formatCoordinate(center.lng, false)}`; });
+map.on('moveend', () => {
+  const center = map.getCenter().wrap();
+  $('#map-coordinates').textContent = `${formatCoordinate(center.lat)} · ${formatCoordinate(center.lng, false)}`;
+  if (mapCenterInitialized) scheduleMapCenterSave();
+});
 map.on('dragstart', () => { $('#search-results').hidden = true; });
 $('#zoom-in').onclick = () => map.zoomIn();
 $('#zoom-out').onclick = () => map.zoomOut();
 $('#recenter-button').onclick = () => {
   if (locationMode === 'route' && routeDot) map.flyTo(routeDot.getLatLng(), Math.max(14, map.getZoom()));
   else if (locationMode === 'route' && routeLine) fitRoute();
-  else map.flyTo(selectedPlace ? [selectedPlace.latitude, selectedPlace.longitude] : [41.8827, -87.6233], selectedPlace ? Math.max(13, map.getZoom()) : 13, { duration: 0.6 });
+  else if (selectedPlace) map.flyTo([selectedPlace.latitude, selectedPlace.longitude], Math.max(13, map.getZoom()), { duration: 0.6 });
+  else map.flyTo([map.getCenter().lat, map.getCenter().lng], map.getZoom(), { duration: 0.6 });
 };
 $('#retry-map').onclick = () => { tileErrors = 0; $('#map-error').hidden = true; tiles.redraw(); };
 $('#connection-badge').onclick = openSetup;
@@ -578,16 +715,21 @@ $('#setup-scan').onclick = async () => { const result = await runOperation(() =>
 $('#change-configuration').onclick = openOnboarding;
 $('#rerun-onboarding').onclick = () => { $('#settings-dialog').close(); openOnboarding(); };
 $('#save-button').onclick = () => openSave();
+if ($('#route-save-button')) $('#route-save-button').onclick = () => openSave();
+if ($('#route-restore-button')) $('#route-restore-button').onclick = () => runOperation(() => api.stopLocation(), 'Restore command accepted. Phone apps may need a moment to refresh.', 'restore');
 $('#apply-button').onclick = () => { if (selectedPlace && selectedDeviceId) runOperation(() => api.applyLocation({ deviceId: selectedDeviceId, ...selectedPlace })); };
 document.querySelectorAll('[data-location-mode]').forEach(button => { button.onclick = () => { locationMode = button.dataset.locationMode; drawRoute(); render(); }; });
-$('#add-route-stop').onclick = () => {
-  if (!selectedPlace || routeStops.length >= 12) return;
-  routeStops.push({ ...selectedPlace }); routePlan = null; drawRoute(); renderRoute(); paintIcons();
-};
 $('#clear-route').onclick = () => { routeStops = []; routePlan = null; drawRoute(); renderRoute(); paintIcons(); };
-$('#plan-route').onclick = async () => {
-  const planned = await runOperation(() => api.planRoute(routeStops));
-  if (planned) { routePlan = planned; drawRoute(); fitRoute(); renderRoute(); paintIcons(); }
+$('#route-play').onclick = async () => {
+  const action = $('#route-play').dataset.routeAction;
+  if (action === 'pause') return runOperation(() => api.pauseRoute());
+  if (action === 'resume') return runOperation(() => api.resumeRoute());
+  if (action === 'plan') {
+    const planned = await runOperation(() => api.planRoute(routeStops));
+    if (planned) { routePlan = planned; drawRoute(); fitRoute(); renderRoute(); paintIcons(); }
+    return;
+  }
+  if (action === 'start') return runOperation(() => api.startRoute({ deviceId: selectedDeviceId, routeId: routePlan?.id, speedMph: routeSpeedMph }));
 };
 $('#route-speed').onchange = (event) => {
   const mph = Number(event.target.value);
@@ -599,7 +741,6 @@ $('#route-speed').onchange = (event) => {
   routeSpeedMph = mph;
   renderRoute();
 };
-$('#route-play').onclick = () => runOperation(() => state.route?.status === 'running' ? api.pauseRoute() : state.route?.status === 'paused' ? api.resumeRoute() : api.startRoute({ deviceId: selectedDeviceId, routeId: routePlan?.id, speedMph: routeSpeedMph }));
 $('#restore-button').onclick = () => runOperation(() => api.stopLocation(), 'Restore command accepted. Phone apps may need a moment to refresh.', 'restore');
 $('#toast-close').onclick = () => { $('#toast').hidden = true; clearTimeout(toastTimer); };
 $('#install-runtime').onclick = () => runOperation(() => api.installRuntime(), 'Device tools checked.');
@@ -685,6 +826,7 @@ api.onState(acceptState);
 render();
 api.getState().then(async next => {
   acceptState(next);
+  await initializeMapCenter();
   if (api.getRoute) {
     const planned = await api.getRoute();
     if (planned) { routePlan = planned; routeStops = planned.waypoints; drawRoute(); renderRoute(); paintIcons(); }

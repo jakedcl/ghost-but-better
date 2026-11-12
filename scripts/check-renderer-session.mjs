@@ -131,10 +131,10 @@ try {
     await page.locator('#latitude').fill(String(latitude));
     await page.locator('#longitude').fill(String(longitude));
     await page.getByRole('button', { name: 'Select these coordinates', exact: true }).click();
-    await page.locator('#add-route-stop').click();
+    await page.locator('#add-route-stop-pin').click();
   }
   assert.equal(await page.locator('#route-stops li').count(), 2);
-  await page.locator('#plan-route').click();
+  await page.locator('#route-play').click();
   await page.waitForFunction(() => !document.querySelector('#route-play').disabled);
   assert.equal((await page.evaluate(() => window.ghostFixture.getCalls())).filter(c => c.method === 'applyLocation').length, 1, 'Planning a route cannot send a location.');
   assert.equal(await page.locator('.route-stop-marker').count(), 2);
