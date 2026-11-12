@@ -131,12 +131,12 @@ try {
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page.locator('[data-location-mode="route"]').click();
   for (const [latitude, longitude] of [[41.8827, -87.6233], [41.8917, -87.6078]]) {
-    await page.locator('#latitude').fill(String(latitude));
-    await page.locator('#longitude').fill(String(longitude));
-    await page.getByRole('button', { name: 'Select these coordinates', exact: true }).click();
-    await page.locator('#add-route-stop').click();
+    await page.locator('#search-input').fill(`${latitude}, ${longitude}`);
+    await page.locator('#search-input').press('Enter');
+    await page.waitForTimeout(200);
+    await page.locator('#add-route-stop-pin').click();
   }
-  await page.locator('#plan-route').click();
+  await page.locator('#route-play').click();
   await page.locator('#route-summary').waitFor({timeout: 25000});
   const planned = await page.evaluate(() => window.ghost.getRoute());
   assert.ok(planned.coordinates.length > 2, 'A real road route should contain road geometry.');

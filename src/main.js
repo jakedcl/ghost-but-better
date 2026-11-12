@@ -5,9 +5,10 @@ import {
   createIcons, MapPin, Bookmark, Settings2, HelpCircle, ArrowUpRight, ArrowRight,
   Search, Plus, Minus, Crosshair, Smartphone, RefreshCw, ChevronDown, X, Check,
   Circle, Download, Pencil, Trash2, RotateCcw, LoaderCircle, Cable, Laptop, Monitor,
-  ChevronLeft,
+  ChevronLeft, GripVertical,
 } from 'lucide';
 import { createPreviewBridge } from './preview.js';
+import { routePrimaryDisabled, routePrimaryLabel, routePrimaryMode, stopsMatch } from './route-ui.mjs';
 
 const isPreview = !window.ghost;
 const detectedHost = /Windows/i.test(navigator.userAgent) ? 'windows' : 'mac';
@@ -15,7 +16,7 @@ document.documentElement.classList.toggle('host-windows', detectedHost === 'wind
 document.documentElement.classList.toggle('desktop-app', !isPreview);
 const api = window.ghost || createPreviewBridge();
 const dismissedWifi = new Set();
-const icons = { MapPin, Bookmark, Settings2, HelpCircle, ArrowUpRight, ArrowRight, Search, Plus, Minus, Crosshair, Smartphone, RefreshCw, ChevronDown, X, Check, Circle, Download, Pencil, Trash2, RotateCcw, LoaderCircle, Cable, Laptop, Monitor, ChevronLeft };
+const icons = { MapPin, Bookmark, Settings2, HelpCircle, ArrowUpRight, ArrowRight, Search, Plus, Minus, Crosshair, Smartphone, RefreshCw, ChevronDown, X, Check, Circle, Download, Pencil, Trash2, RotateCcw, LoaderCircle, Cable, Laptop, Monitor, ChevronLeft, GripVertical };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
 const icon = (name, cls = '') => `<i data-lucide="${name}" class="${cls}" aria-hidden="true"></i>`;
@@ -81,7 +82,7 @@ let selectedDeviceId = null;
 let selectedPlace = null;
 let currentView = 'map';
 let locationMode = 'fixed';
-let routeStops = [], routePlan = null;
+let routeStops = [], routePlan = null, routeDragIndex = null;
 const ROUTE_SPEED_OPTIONS = [3, 5, 10, 15, 25, 35, 45, 55, 65, 75];
 let routeSpeedMph = 45;
 let routeLine = null, routeDot = null;
@@ -141,14 +142,14 @@ $('#app').innerHTML = `
         <section id="route-mode-panel" class="destination-section mode-panel" aria-labelledby="route-destination-label" hidden>
           <div class="section-heading"><h2 id="route-destination-label">Destination</h2><button id="route-save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
           <div id="route-controls">
-            <button id="add-route-stop" class="secondary-button">${icon('plus')} Add selected pin to route</button>
-            <ol id="route-stops" class="route-stops"></ol>
-            <div class="route-plan-actions"><button id="plan-route" class="secondary-button">Plan road route</button><button id="clear-route" class="text-button">Clear</button></div>
+            <div id="route-pin-row" class="route-pin-row" hidden></div>
+            <ol id="route-stops" class="route-stops route-stop-list"></ol>
+            <div class="route-plan-actions"><button id="clear-route" class="text-button">Clear</button></div>
             <p class="route-provider">Stops are sent to OSRM when you plan. Roads by OpenStreetMap. Internet required.</p>
             <div id="route-summary" class="route-summary" hidden></div>
             <label id="route-speed-wrap" class="route-speed" hidden><span>Playback speed</span><select id="route-speed" class="text-input" aria-label="Route playback speed in miles per hour">${ROUTE_SPEED_OPTIONS.map(mph => `<option value="${mph}">${mph} mph</option>`).join('')}</select></label>
-            <button id="route-play" class="primary-button" disabled>Start route · 45 mph</button>
-            <p id="route-hint" class="action-hint">Add a start and destination, in order.</p>
+            <button id="route-play" class="primary-button" disabled>Plan road route</button>
+            <p id="route-hint" class="action-hint">Add a start and destination, then plan the route.</p>
           </div>
           <button id="route-restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
         </section>
@@ -424,8 +425,33 @@ function drawRoute() {
     routeMarkers.push(L.marker(latlng, { interactive: false, icon: L.divIcon({ className: 'route-stop-marker', html: `<span>${index + 1}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(map));
   });
 }
+function addSelectedRouteStop() {
+  if (!selectedPlace || activeRoutePlayback() || routeStops.length >= 12) return;
+  if (routeStops.some((stop) => stopsMatch(stop, selectedPlace))) return;
+  routeStops.push({ ...selectedPlace, label: `${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}` });
+  routePlan = null;
+  drawRoute();
+  renderRoute();
+  paintIcons();
+}
+
+function activeRoutePlayback() {
+  const route = state.route;
+  return Boolean(route && state.session);
+}
+
+function moveRouteStop(from, to) {
+  if (from === to || from < 0 || to < 0 || from >= routeStops.length || to >= routeStops.length) return;
+  const [stop] = routeStops.splice(from, 1);
+  routeStops.splice(to, 0, stop);
+  routePlan = null;
+  drawRoute();
+  renderRoute();
+  paintIcons();
+}
+
 function renderRoute() {
-  const route = state.route, active = Boolean(route && state.session), inRoute = locationMode === 'route';
+  const route = state.route, active = activeRoutePlayback(), inRoute = locationMode === 'route';
   const busy = pending || state.busy;
   const panel = $('.control-panel'), wasActive = panel.classList.contains('route-active');
   panel.classList.toggle('route-active', active);
@@ -438,13 +464,35 @@ function renderRoute() {
     button.setAttribute('aria-pressed', String(button.dataset.locationMode === locationMode));
     button.disabled = busy || (active && button.dataset.locationMode === 'fixed');
   });
-  $('#add-route-stop').disabled = !selectedPlace || active || busy || routeStops.length >= 12;
-  $('#plan-route').disabled = routeStops.length < 2 || active || busy;
   $('#clear-route').disabled = !routeStops.length || active || busy;
-  setContent('#route-stops', routeStops.map((stop, i) => `<li><span class="route-stop-number">${i + 1}</span><div><strong>${esc(stop.label)}</strong><small>${i === 0 ? 'Start' : i === routeStops.length - 1 ? 'Destination' : 'Via'}</small></div><button class="icon-button" data-remove-stop="${i}" aria-label="Remove stop ${i + 1}" ${active || busy ? 'disabled' : ''}>${icon('x')}</button></li>`).join(''));
+  const selectedAlreadyAdded = selectedPlace && routeStops.some((stop) => stopsMatch(stop, selectedPlace));
+  const canEditStops = !active && !busy;
+  if (inRoute) {
+    if (selectedPlace && !selectedAlreadyAdded) {
+      $('#route-pin-row').hidden = false;
+      setContent('#route-pin-row', `<button id="add-route-stop-pin" class="route-stop-control" type="button" aria-label="Add this stop to the route" ${canEditStops ? '' : 'disabled'}>${icon('plus')}</button><div class="route-stop-copy"><strong>${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}</strong><small>Drop or select another pin, then add.</small></div>`);
+      if ($('#add-route-stop-pin')) $('#add-route-stop-pin').onclick = addSelectedRouteStop;
+    } else {
+      $('#route-pin-row').hidden = true;
+      setContent('#route-pin-row', '');
+    }
+  }
+  setContent('#route-stops', routeStops.map((stop, i) => `<li class="route-stop-item" draggable="${canEditStops ? 'true' : 'false'}" data-stop-index="${i}"><span class="route-stop-control" aria-hidden="true">${icon('grip-vertical')}</span><span class="route-stop-number">${i + 1}</span><div class="route-stop-copy"><strong>${formatCoordinate(stop.latitude)} · ${formatCoordinate(stop.longitude, false)}</strong><small>${i === 0 ? 'Start' : i === routeStops.length - 1 ? 'Destination' : 'Via'}</small></div><button class="icon-button" data-remove-stop="${i}" aria-label="Remove stop ${i + 1}" ${canEditStops ? '' : 'disabled'}>${icon('x')}</button></li>`).join(''));
   document.querySelectorAll('[data-remove-stop]').forEach(button => { button.onclick = () => {
     routeStops.splice(Number(button.dataset.removeStop), 1); routePlan = null; drawRoute(); renderRoute(); paintIcons();
   }; });
+  document.querySelectorAll('.route-stop-item[draggable="true"]').forEach((item) => {
+    item.ondragstart = (event) => { routeDragIndex = Number(item.dataset.stopIndex); item.classList.add('dragging'); event.dataTransfer?.setData('text/plain', item.dataset.stopIndex); };
+    item.ondragend = () => { routeDragIndex = null; item.classList.remove('dragging'); };
+    item.ondragover = (event) => { event.preventDefault(); item.classList.add('drop-target'); };
+    item.ondragleave = () => item.classList.remove('drop-target');
+    item.ondrop = (event) => {
+      event.preventDefault();
+      item.classList.remove('drop-target');
+      if (routeDragIndex == null) return;
+      moveRouteStop(routeDragIndex, Number(item.dataset.stopIndex));
+    };
+  });
   $('#route-summary').hidden = !routePlan;
   const speedMph = route?.speedMph ?? routeSpeedMph;
   if (route?.speedMph) routeSpeedMph = route.speedMph;
@@ -455,10 +503,15 @@ function renderRoute() {
   speedSelect.disabled = busy || route?.status === 'completed' || (!active && !routePlan);
   const device = state.devices.find(d => d.id === selectedDeviceId);
   const otherSession = state.session && state.session.deviceId !== selectedDeviceId;
-  const running = route?.status === 'running', paused = route?.status === 'paused';
-  $('#route-play').disabled = busy || (active ? !running && (!paused || !device || otherSession || !['ready', 'setup-required'].includes(device.state)) : !routePlan || device?.state !== 'ready' || Boolean(otherSession));
-  $('#route-play').textContent = busy ? 'Working…' : running ? 'Pause route' : paused ? `Resume route · ${speedMph} mph` : route?.status === 'completed' ? 'Route completed' : `Start route · ${speedMph} mph`;
-  $('#route-hint').textContent = active ? route.message : otherSession ? 'Restore the current session before switching phones.' : !routePlan ? 'Add a start and destination, then plan the route.' : !device ? 'Connect a phone to start. The route is ready.' : 'Start moves your phone to the first stop, then follows the road.';
+  const running = route?.status === 'running', paused = route?.status === 'paused', completed = route?.status === 'completed';
+  const hasPlan = Boolean(routePlan);
+  const primary = routePrimaryLabel({ busy, running, paused, completed, hasPlan, stopCount: routeStops.length, speedMph });
+  $('#route-play').disabled = routePrimaryDisabled({
+    busy, active, running, paused, device, otherSession, hasPlan, stopCount: routeStops.length, deviceReady: device?.state === 'ready',
+  });
+  $('#route-play').textContent = primary;
+  $('#route-play').dataset.routeAction = routePrimaryMode({ active, running, paused, completed, hasPlan, stopCount: routeStops.length });
+  $('#route-hint').textContent = active ? route.message : otherSession ? 'Restore the current session before switching phones.' : !hasPlan ? 'Add at least two stops, then plan the route.' : !device ? 'Connect a phone to start. The route is ready.' : running ? 'Pause keeps the route at the current point.' : 'Start moves your phone to the first stop, then follows the road.';
   if (route?.point && inRoute) {
     const point = [route.point.latitude, route.point.longitude];
     if (!routeDot) routeDot = L.circleMarker(point, { radius: 9, color: 'white', weight: 3, fillColor: '#087bff', fillOpacity: 1, className: 'route-location-dot', interactive: false }).addTo(map);
@@ -666,14 +719,17 @@ if ($('#route-save-button')) $('#route-save-button').onclick = () => openSave();
 if ($('#route-restore-button')) $('#route-restore-button').onclick = () => runOperation(() => api.stopLocation(), 'Restore command accepted. Phone apps may need a moment to refresh.', 'restore');
 $('#apply-button').onclick = () => { if (selectedPlace && selectedDeviceId) runOperation(() => api.applyLocation({ deviceId: selectedDeviceId, ...selectedPlace })); };
 document.querySelectorAll('[data-location-mode]').forEach(button => { button.onclick = () => { locationMode = button.dataset.locationMode; drawRoute(); render(); }; });
-$('#add-route-stop').onclick = () => {
-  if (!selectedPlace || routeStops.length >= 12) return;
-  routeStops.push({ ...selectedPlace }); routePlan = null; drawRoute(); renderRoute(); paintIcons();
-};
 $('#clear-route').onclick = () => { routeStops = []; routePlan = null; drawRoute(); renderRoute(); paintIcons(); };
-$('#plan-route').onclick = async () => {
-  const planned = await runOperation(() => api.planRoute(routeStops));
-  if (planned) { routePlan = planned; drawRoute(); fitRoute(); renderRoute(); paintIcons(); }
+$('#route-play').onclick = async () => {
+  const action = $('#route-play').dataset.routeAction;
+  if (action === 'pause') return runOperation(() => api.pauseRoute());
+  if (action === 'resume') return runOperation(() => api.resumeRoute());
+  if (action === 'plan') {
+    const planned = await runOperation(() => api.planRoute(routeStops));
+    if (planned) { routePlan = planned; drawRoute(); fitRoute(); renderRoute(); paintIcons(); }
+    return;
+  }
+  if (action === 'start') return runOperation(() => api.startRoute({ deviceId: selectedDeviceId, routeId: routePlan?.id, speedMph: routeSpeedMph }));
 };
 $('#route-speed').onchange = (event) => {
   const mph = Number(event.target.value);
@@ -685,7 +741,6 @@ $('#route-speed').onchange = (event) => {
   routeSpeedMph = mph;
   renderRoute();
 };
-$('#route-play').onclick = () => runOperation(() => state.route?.status === 'running' ? api.pauseRoute() : state.route?.status === 'paused' ? api.resumeRoute() : api.startRoute({ deviceId: selectedDeviceId, routeId: routePlan?.id, speedMph: routeSpeedMph }));
 $('#restore-button').onclick = () => runOperation(() => api.stopLocation(), 'Restore command accepted. Phone apps may need a moment to refresh.', 'restore');
 $('#toast-close').onclick = () => { $('#toast').hidden = true; clearTimeout(toastTimer); };
 $('#install-runtime').onclick = () => runOperation(() => api.installRuntime(), 'Device tools checked.');
