@@ -40,8 +40,12 @@ async function boot() {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } });
   });
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'geolocation' && window && webContents === window.webContents);
+  });
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => (
+    permission === 'geolocation' && window && webContents === window.webContents
+  ));
   const options = { rootPath, resourcesPath: app.isPackaged ? process.resourcesPath : path.join(rootPath, 'resources') };
   const callbacks = { onSessionEnd: event => controller?.sessionEnded(event), onLocationRefresh: event => controller?.locationRefreshed(event) };
   const ios = new IosAdapter({ ...options, ...callbacks });

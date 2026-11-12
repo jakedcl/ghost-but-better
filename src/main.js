@@ -121,7 +121,7 @@ $('#app').innerHTML = `
       <div id="destination-callout" class="destination-callout" hidden></div>
       <div class="map-controls"><button id="recenter-button" class="map-button" aria-label="Center map on selected place" title="Center map">${icon('crosshair')}</button><div class="zoom-buttons"><button id="zoom-in" class="map-button" aria-label="Zoom in" title="Zoom in">${icon('plus')}</button><button id="zoom-out" class="map-button" aria-label="Zoom out" title="Zoom out">${icon('minus')}</button></div></div>
       <div class="map-bottom"><div id="session-status" class="session-status" role="status"></div></div>
-      <div class="map-footer"><span id="map-coordinates">41.88270° N · 87.62330° W</span><span><a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a></span></div>
+      <div class="map-footer"><span id="map-coordinates">20.00000° N · 0.00000° E</span><span><a href="https://photon.komoot.io" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a></span></div>
     </main>
 
     <aside class="control-panel">
@@ -204,7 +204,10 @@ $('#app').innerHTML = `
   <div id="toast" class="toast" role="status" hidden><span id="toast-icon"></span><span id="toast-message"></span><button id="toast-close" class="icon-button" aria-label="Dismiss notification">${icon('x')}</button></div>
 `;
 
-const map = L.map('map', { zoomControl: false, attributionControl: true, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView([41.8827, -87.6233], 13);
+const DEFAULT_WORLD_VIEW = { latitude: 20, longitude: 0, zoom: 2 };
+const map = L.map('map', { zoomControl: false, attributionControl: true, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView([DEFAULT_WORLD_VIEW.latitude, DEFAULT_WORLD_VIEW.longitude], DEFAULT_WORLD_VIEW.zoom);
+let mapCenterInitialized = false;
+let mapCenterSaveTimer;
 map.attributionControl.setPrefix(false);
 const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors', keepBuffer: 1, updateWhenIdle: true }).addTo(map);
 let tileErrors = 0;
@@ -215,6 +218,61 @@ let marker = null;
 
 function guideFor(host = setupHost, phone = setupPlatform) { return setupGuides[`${host}:${phone}`]; }
 function platformName(platform) { return platform === 'ios' ? 'iPhone' : 'Android'; }
+
+function savedMapCenter(preferences = {}) {
+  const latitude = Number(preferences.mapLatitude);
+  const longitude = Number(preferences.mapLongitude);
+  const zoom = Number(preferences.mapZoom);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(zoom)) return null;
+  return { latitude, longitude, zoom };
+}
+
+function phoneMapCenter() {
+  if (state.session && Number.isFinite(state.session.latitude) && Number.isFinite(state.session.longitude)) {
+    return { latitude: state.session.latitude, longitude: state.session.longitude, zoom: 14 };
+  }
+  const recent = state.recentPlaces?.[0];
+  if (recent && Number.isFinite(recent.latitude) && Number.isFinite(recent.longitude)) {
+    return { latitude: recent.latitude, longitude: recent.longitude, zoom: 13 };
+  }
+  return null;
+}
+
+function applyMapCenter(center, animate = false) {
+  if (!center) return;
+  const position = [center.latitude, center.longitude];
+  const zoom = center.zoom ?? Math.max(map.getZoom(), 13);
+  if (animate) map.flyTo(position, zoom, { duration: 0.8 });
+  else map.setView(position, zoom);
+  const mapCenter = map.getCenter().wrap();
+  $('#map-coordinates').textContent = `${formatCoordinate(mapCenter.lat)} · ${formatCoordinate(mapCenter.lng, false)}`;
+}
+
+function scheduleMapCenterSave() {
+  clearTimeout(mapCenterSaveTimer);
+  mapCenterSaveTimer = setTimeout(() => {
+    const center = map.getCenter().wrap();
+    const zoom = map.getZoom();
+    api.updatePreferences({ mapLatitude: center.lat, mapLongitude: center.lng, mapZoom: zoom }).catch(() => {});
+  }, 800);
+}
+
+async function initializeMapCenter() {
+  if (mapCenterInitialized) return;
+  const hostPosition = await new Promise((resolve) => {
+    if (isPreview || !navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, zoom: 13 }),
+      () => resolve(null),
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8000 },
+    );
+  });
+  applyMapCenter(hostPosition || phoneMapCenter() || savedMapCenter(state.preferences) || DEFAULT_WORLD_VIEW, Boolean(hostPosition));
+  mapCenterInitialized = true;
+}
 
 function notify(message, error = false) {
   clearTimeout(toastTimer);
@@ -566,14 +624,19 @@ function openSave(place = selectedPlace) {
 }
 
 map.on('click', (event) => { const point = event.latlng.wrap(); selectPlace({ latitude: point.lat, longitude: point.lng, label: 'Dropped pin' }, false); });
-map.on('moveend', () => { const center = map.getCenter().wrap(); $('#map-coordinates').textContent = `${formatCoordinate(center.lat)} · ${formatCoordinate(center.lng, false)}`; });
+map.on('moveend', () => {
+  const center = map.getCenter().wrap();
+  $('#map-coordinates').textContent = `${formatCoordinate(center.lat)} · ${formatCoordinate(center.lng, false)}`;
+  if (mapCenterInitialized) scheduleMapCenterSave();
+});
 map.on('dragstart', () => { $('#search-results').hidden = true; });
 $('#zoom-in').onclick = () => map.zoomIn();
 $('#zoom-out').onclick = () => map.zoomOut();
 $('#recenter-button').onclick = () => {
   if (locationMode === 'route' && routeDot) map.flyTo(routeDot.getLatLng(), Math.max(14, map.getZoom()));
   else if (locationMode === 'route' && routeLine) fitRoute();
-  else map.flyTo(selectedPlace ? [selectedPlace.latitude, selectedPlace.longitude] : [41.8827, -87.6233], selectedPlace ? Math.max(13, map.getZoom()) : 13, { duration: 0.6 });
+  else if (selectedPlace) map.flyTo([selectedPlace.latitude, selectedPlace.longitude], Math.max(13, map.getZoom()), { duration: 0.6 });
+  else map.flyTo([map.getCenter().lat, map.getCenter().lng], map.getZoom(), { duration: 0.6 });
 };
 $('#retry-map').onclick = () => { tileErrors = 0; $('#map-error').hidden = true; tiles.redraw(); };
 $('#connection-badge').onclick = openSetup;
@@ -691,6 +754,7 @@ api.onState(acceptState);
 render();
 api.getState().then(async next => {
   acceptState(next);
+  await initializeMapCenter();
   if (api.getRoute) {
     const planned = await api.getRoute();
     if (planned) { routePlan = planned; routeStops = planned.waypoints; drawRoute(); renderRoute(); paintIcons(); }
