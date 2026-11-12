@@ -127,14 +127,20 @@ $('#app').innerHTML = `
     <aside class="control-panel">
       <div class="panel-scroll">
         <div class="panel-heading"><span class="eyebrow" id="panel-eyebrow">Location</span><h1 id="panel-title">Set a location</h1><p id="panel-subtitle">Choose a phone and a point on the map.</p></div>
-        <div class="location-modes" role="group" aria-label="Location mode"><button data-location-mode="fixed" aria-pressed="true">Fixed location</button><button data-location-mode="route" aria-pressed="false">Route</button></div>
-        <section class="device-section" aria-labelledby="device-label"><div class="section-heading"><h2 id="device-label">Phone</h2><button id="scan-button" class="icon-button" aria-label="Refresh connected devices" title="Refresh connected devices">${icon('refresh-cw')}</button></div><div id="device-area"></div><div id="wifi-prompt" class="wifi-prompt" hidden><strong>Switch to Wi-Fi?</strong><p>Your phone is working over USB and this computer has Wi-Fi. Keep both on the same network and leave the cable connected until confirmed.</p><p id="wifi-prompt-android" hidden>Enables network debugging on Android. Use a trusted network; restart the phone to turn it off.</p><div><button id="wifi-prompt-switch" class="secondary-button compact">Switch to Wi-Fi</button><button id="wifi-prompt-dismiss" class="text-button">Stay on USB</button></div></div><button id="connection-options" class="setup-link">Connection: USB · Change</button></section>
-        <section class="destination-section" aria-labelledby="destination-label">
-          <div class="section-heading"><h2 id="destination-label">Destination</h2><button id="save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
-          <div id="destination-summary"></div>
+        <section class="device-section panel-device-top" aria-labelledby="device-label"><div class="section-heading"><h2 id="device-label">Phone</h2><button id="scan-button" class="icon-button" aria-label="Refresh connected devices" title="Refresh connected devices">${icon('refresh-cw')}</button></div><div id="device-area"></div><div id="wifi-prompt" class="wifi-prompt" hidden><strong>Switch to Wi-Fi?</strong><p>Your phone is working over USB and this computer has Wi-Fi. Keep both on the same network and leave the cable connected until confirmed.</p><p id="wifi-prompt-android" hidden>Enables network debugging on Android. Use a trusted network; restart the phone to turn it off.</p><div><button id="wifi-prompt-switch" class="secondary-button compact">Switch to Wi-Fi</button><button id="wifi-prompt-dismiss" class="text-button">Stay on USB</button></div></div><button id="connection-options" class="setup-link">Connection: USB · Change</button></section>
+        <div class="location-modes panel-mode-tabs" role="group" aria-label="Location mode"><button data-location-mode="fixed" aria-pressed="true">Fixed location</button><button data-location-mode="route" aria-pressed="false">Route</button></div>
+        <div id="pin-entry-panel" class="pin-entry-panel">
           <form id="coordinate-form" class="coordinate-form"><label><span>Latitude</span><input id="latitude" type="number" min="-90" max="90" step="any" placeholder="41.88270" required aria-label="Latitude" /></label><label><span>Longitude</span><input id="longitude" type="number" min="-180" max="180" step="any" placeholder="−87.62330" required aria-label="Longitude" /></label><button type="submit" class="coordinate-submit" aria-label="Select these coordinates" title="Select these coordinates">${icon('arrow-right')}</button></form>
           <p class="coordinate-hint">Search, enter coordinates, or click the map.</p>
-          <div id="route-controls" hidden>
+        </div>
+        <section id="fixed-mode-panel" class="destination-section mode-panel" aria-labelledby="destination-label">
+          <div class="section-heading"><h2 id="destination-label">Destination</h2><button id="save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
+          <div id="destination-summary"></div>
+          <div id="fixed-actions"><button id="apply-button" class="primary-button" disabled><span>Set location</span>${icon('arrow-up-right')}</button><p id="apply-hint" class="action-hint">Connect a phone to get started.</p></div><button id="restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
+        </section>
+        <section id="route-mode-panel" class="destination-section mode-panel" aria-labelledby="route-destination-label" hidden>
+          <div class="section-heading"><h2 id="route-destination-label">Destination</h2><button id="route-save-button" class="icon-button" aria-label="Save selected place" title="Save selected place" disabled>${icon('bookmark')}</button></div>
+          <div id="route-controls">
             <button id="add-route-stop" class="secondary-button">${icon('plus')} Add selected pin to route</button>
             <ol id="route-stops" class="route-stops"></ol>
             <div class="route-plan-actions"><button id="plan-route" class="secondary-button">Plan road route</button><button id="clear-route" class="text-button">Clear</button></div>
@@ -144,7 +150,7 @@ $('#app').innerHTML = `
             <button id="route-play" class="primary-button" disabled>Start route · 45 mph</button>
             <p id="route-hint" class="action-hint">Add a start and destination, in order.</p>
           </div>
-          <div id="fixed-actions"><button id="apply-button" class="primary-button" disabled><span>Set location</span>${icon('arrow-up-right')}</button><p id="apply-hint" class="action-hint">Connect a phone to get started.</p></div><button id="restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
+          <button id="route-restore-button" class="restore-button" disabled>${icon('rotate-ccw')} Restore real location</button>
         </section>
         <section class="saved-section" aria-labelledby="saved-label"><div class="section-heading"><h2 id="saved-label">Saved places <span id="saved-count" class="count">0</span></h2><button id="view-saved-button" class="text-button">View all ${icon('arrow-right')}</button></div><div id="saved-list"></div></section>
       </div>
@@ -373,6 +379,7 @@ function renderDestination() {
     ? `<div class="destination-name">${icon('map-pin')}<div><strong>${esc(selectedPlace.label)}</strong><span>${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}</span></div></div>`
     : `<div class="destination-empty">${icon('map-pin')}<div><strong>No destination selected</strong><span>Drop a pin anywhere on the map.</span></div></div>`);
   $('#save-button').disabled = !selectedPlace || pending;
+  if ($('#route-save-button')) $('#route-save-button').disabled = !selectedPlace || pending;
   $('#destination-callout').hidden = !selectedPlace || locationMode === 'route';
   if (selectedPlace) setContent('#destination-callout', `<strong>${esc(selectedPlace.label)}</strong><span>${formatCoordinate(selectedPlace.latitude)} · ${formatCoordinate(selectedPlace.longitude, false)}</span>`);
 }
@@ -389,8 +396,14 @@ function renderActions() {
   $('#apply-button').disabled = busy || !selectedPlace || !canApply || Boolean(otherSession);
   setContent('#apply-button', `<span>${label}</span>${icon(busy ? 'loader-circle' : retry ? 'refresh-cw' : 'arrow-up-right', busy ? 'spin' : '')}`);
   $('#apply-hint').textContent = pendingAction === 'restore' ? 'Stopping automatic retry and requesting real location.' : status === 'reconnecting' ? 'Reconnecting to the same phone. Keep your phone connected.' : busy ? 'Keep your phone connected.' : otherSession ? 'Restore the current session before switching phones.' : !device || device.state === 'offline' ? state.session ? 'Reconnect the same phone to continue.' : 'Connect a phone to get started.' : reconnectIOS ? 'Reconnect and apply this pin to the same iPhone.' : device.state !== 'ready' ? 'Finish device setup to set a location.' : !selectedPlace ? 'Choose a destination on the map.' : retry ? 'Retry this pin on the same phone, or restore real location.' : 'Your phone changes only when you press this button.';
-  $('#restore-button').disabled = !state.session || pending || (busy && status !== 'reconnecting');
-  setContent('#restore-button', `${icon(pendingAction === 'restore' ? 'loader-circle' : 'rotate-ccw', pendingAction === 'restore' ? 'spin' : '')} ${pendingAction === 'restore' ? 'Stopping simulation…' : 'Restore real location'}`);
+  const restoreDisabled = !state.session || pending || (busy && status !== 'reconnecting');
+  const restoreHtml = `${icon(pendingAction === 'restore' ? 'loader-circle' : 'rotate-ccw', pendingAction === 'restore' ? 'spin' : '')} ${pendingAction === 'restore' ? 'Stopping simulation…' : 'Restore real location'}`;
+  $('#restore-button').disabled = restoreDisabled;
+  setContent('#restore-button', restoreHtml);
+  if ($('#route-restore-button')) {
+    $('#route-restore-button').disabled = restoreDisabled;
+    setContent('#route-restore-button', restoreHtml);
+  }
 }
 
 function placeItem(place) {
@@ -421,8 +434,6 @@ function renderRoute() {
     if (active && map.hasLayer(marker)) marker.remove();
     if (!active && !map.hasLayer(marker)) marker.addTo(map);
   }
-  $('#route-controls').hidden = !inRoute;
-  $('#fixed-actions').hidden = inRoute;
   document.querySelectorAll('[data-location-mode]').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.locationMode === locationMode));
     button.disabled = busy || (active && button.dataset.locationMode === 'fixed');
@@ -552,12 +563,16 @@ function renderOnboarding() {
 
 function renderView() {
   const showingSaved = currentView === 'saved';
+  const inRoute = !showingSaved && locationMode === 'route';
   $('.control-panel').classList.toggle('show-saved', showingSaved);
   $('#saved-nav-button').classList.toggle('active', showingSaved);
   $('#saved-nav-button').setAttribute('aria-pressed', String(showingSaved));
   $('#panel-eyebrow').textContent = showingSaved ? 'Library' : 'Location';
   $('#panel-title').textContent = showingSaved ? 'Saved places' : locationMode === 'route' ? 'Follow a route' : 'Set a location';
   $('#panel-subtitle').textContent = showingSaved ? 'Select a place to return to the map.' : locationMode === 'route' ? `Choose stops. Move along the road at ${state.route?.speedMph ?? routeSpeedMph} mph.` : 'Choose a phone and a point on the map.';
+  $('#pin-entry-panel').hidden = showingSaved || inRoute;
+  $('#fixed-mode-panel').hidden = showingSaved || locationMode !== 'fixed';
+  $('#route-mode-panel').hidden = showingSaved || locationMode !== 'route';
 }
 
 function handoffPhone() {
@@ -647,6 +662,8 @@ $('#setup-scan').onclick = async () => { const result = await runOperation(() =>
 $('#change-configuration').onclick = openOnboarding;
 $('#rerun-onboarding').onclick = () => { $('#settings-dialog').close(); openOnboarding(); };
 $('#save-button').onclick = () => openSave();
+if ($('#route-save-button')) $('#route-save-button').onclick = () => openSave();
+if ($('#route-restore-button')) $('#route-restore-button').onclick = () => runOperation(() => api.stopLocation(), 'Restore command accepted. Phone apps may need a moment to refresh.', 'restore');
 $('#apply-button').onclick = () => { if (selectedPlace && selectedDeviceId) runOperation(() => api.applyLocation({ deviceId: selectedDeviceId, ...selectedPlace })); };
 document.querySelectorAll('[data-location-mode]').forEach(button => { button.onclick = () => { locationMode = button.dataset.locationMode; drawRoute(); render(); }; });
 $('#add-route-stop').onclick = () => {
